@@ -26,17 +26,60 @@ import statistics._
 
 import CircuitBreaker._
 
+/**
+ * The library's main abstraction, representing protection of an effectful
+ * program which has a instance of `fs2.Async` in implicit scope.  The API is
+ * relatively simple, consisting of one primary function, `protect`, which takes the
+ * program to protect and returns that an enhanced version of that program, with the
+ * ability to fail fast without invoking the underlying service if conditions
+ * warrant, ensuring that failure of the service it represents does not result in a cascade
+ * of failure by continuing to invoke the service.  The `CircuitBreaker` has two secondary
+ * functions: 1.) `currentStatistics`, which provides the current statistics for the `CircuitBreaker`
+ * for use by monitoring and dashboarding applications and; 2.) `lastActivity` which provides
+ * the `java.time.Instant` that the `CircuitBreaker` was last active.
+ *
+ * The `CircuitBreaker` is not directly instantiated; rather, a `CircuitBreaker` is requested
+ * from the [[CircuitBreakerRegistry]] via the [[CircuitBreakerRegistry#forFailure]] for a
+ * `CircuitBreaker` that opens when a configured percentage of protected programs fail within a
+ * configured time period or [[CircuitBreakerRegistry#forFlowControl]] for a circuit breaker
+ * that, in addition to the failure protected just described, also throttles requests when the
+ * average rate of requests over a configured time period is greater than the observed
+ * average rate of processing for the protected program.
+ *
+ * @param id - the unique identifier for this circuit breaker.  This is used to look up the
+ *   `CircuitBreaker` instance from the registry (or, if not present, to create a new instance).
+ */
 sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async[F]) {
 
-  def lastActivity: F[Instant]
-
-  def currentStatistics: F[Statistics]
-
-  final def protect[A](executable: F[A]): F[A] = for {
+  /**
+   * Provide protection over the provided effectful program based to the configuration
+   * of the specific `CircuitBreaker` instance.
+   * @param program - the effectful program represented by `F[A]`
+   * @return program - an enhanced version of the passed-in program, wrapped in a protective
+   *   layer that will fail fast when a threshold of failures have been observed for the
+   *   underlying service and may also throttle requests when observed inbound rate exceeds
+   *   the processing rate.
+   */
+  final def protect[A](program: F[A]): F[A] = for {
     stats <- beforeExecution
-    attempt <- executable.attempt
+    attempt <- program.attempt
     result <- afterExecution(stats, attempt)
   } yield result
+
+  /**
+   * A description of the current [[statistics.Statistics]] for this `CircuitBreaker`.
+   * @return statistics - an effectful program that when run returns the current
+   *   `Statistics` for this circuitbreaker.
+   */
+  def currentStatistics: F[Statistics]
+
+  /**
+   * A description of the date/time that this `CircuitBreaker` was last active (that is, the last time
+   * its `protect` function was invoked).
+   * @return lastActivity - an effectful program that when run returns the `java.time.Instant` this
+   *   circuitbreaker was last active.
+   */
+  def lastActivity: F[Instant]
 
   private[circuitbreaker]type StatisticsVariant
 
@@ -47,17 +90,41 @@ sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async
   private[circuitbreaker] def afterExecution[A](beforeStats: StatisticsVariant, result: Either[Throwable, A]): F[A]
 }
 
+/**
+ * The companion object for `CircuitBreaker` instance.  The smart constructors for creation of failure and flow control
+ * `CircuitBreaker` instances live here, as do common data types used by `CircuitBreaker` instances.
+ */
 object CircuitBreaker {
+  /**
+   * An Algebriac Data Type (ADT) representing the exceptions which may be returned by a protected program to indicate that the
+   * `CircuitBreaker` itself is failing the request prior to underlying program invocation.
+   * @param id - identifies the `CircuitBreaker` which triggered this error.
+   * @param message - A descriptive message related to the error.
+   */
   sealed abstract class CircuitBreakerException(
     val id: Identifier,
     val message: String
   ) extends RuntimeException(s"Circuit Breaker ${id.show} $message") with Product with Serializable
 
+  /**
+   * This data type represents the error returned when the `CircuitBreaker` is failing a request because the configured percentage
+   * of failures of the protected program has exceeded the configured maximum threshold over the configured time period.
+   * @param id - identifies the `CircuitBreaker` which triggered this error.
+   * @param stats - the [[statistics.FailureStatistics]] which provide details on the current state of the `CircuitBreaker`.
+   */
   case class OpenException(override val id: Identifier, stats: FailureStatistics) extends CircuitBreakerException(id, OpenException.deriveMessage(stats))
   object OpenException {
     private def deriveMessage(stats: FailureStatistics) =
       s"open due to failure threshold (${stats.config.degradationThreshold.show}) exceeded with ${stats.metrics.percentFailure.show}."
   }
+
+  /**
+   * This data type represents the error returned when the `CircuitBreaker` is failing a request as a means of throttling
+   * the input rate to bring it down to the average observed rate at which the underlying program can process them or
+   * to a configured hard limit.
+   * @param id - identifies the `CircuitBreaker` which triggered this error.
+   * @param stats - the [[statistics.FlowControlStatistics]] which provide details on the current state of the `CircuitBreaker`.
+   */
   case class ThrottledException(override val id: Identifier, stats: FlowControlStatistics) extends CircuitBreakerException(id, ThrottledException.deriveMessage(stats))
   object ThrottledException {
     private def deriveMessage(stats: FlowControlStatistics) = {
@@ -71,17 +138,81 @@ object CircuitBreaker {
     }
   }
 
+  /**
+   * An Algebriac Data Type (ADT) representing the events which may be published to the event `fs2.Stream` by the `CircuitBreaker`
+   * whenever there is a state change (a `CircuitBreaker` opening or closing, or a `CircuitBreaker` throttling a request, or
+   * increasing/decreasing the rate at which a request is throttled).
+   * @param id - identifies the `CircuitBreaker` which triggered this error.
+   */
   sealed abstract class CircuitBreakerEvent extends Product with Serializable { def id: Identifier }
+
+  /**
+   * This event is published whenever a `CircuitBreaker` is "opened" (causing subsequent requests to fail fast excepting for periodic tests).
+   * @param id - identifies the `CircuitBreaker` which triggered this event.
+   * @param stats - the [[statistics.FailureStatistics]] which provide details on the current state of the `CircuitBreaker`.
+   */
   case class OpenedEvent(override val id: Identifier, stats: FailureStatistics) extends CircuitBreakerEvent
+  /**
+   * This event is published whenever a `CircuitBreaker` is "closed" (testing having determined the underlying program is capable of
+   * normal invocation).
+   * @param id - identifies the `CircuitBreaker` which triggered this event.
+   * @param stats - the [[statistics.FailureStatistics]] which provide details on the current state of the `CircuitBreaker`.
+   */
   case class ClosedEvent(override val id: Identifier, stats: FailureStatistics) extends CircuitBreakerEvent
+  /**
+   * This event is published whenever a `CircuitBreaker` is throttling up requests.  This means that the acceptable inbound rate
+   *   has risen based on observation that the processing rate has improved.
+   * @param id - identifies the `CircuitBreaker` which triggered this event.
+   * @param stats - the [[statistics.FlowControlStatistics]] which provide details on the current state of the `CircuitBreaker`.
+   */
   case class ThrottledUpEvent(override val id: Identifier, stats: FlowControlStatistics) extends CircuitBreakerEvent
+  /**
+   * This event is published whenever a `CircuitBreaker` is throttling down requests.  This means that the acceptable inbound rate
+   *   has lowered based on observation that the processing rate for the program has degraded.
+   * @param id - identifies the `CircuitBreaker` which triggered this event.
+   * @param stats - the [[statistics.FlowControlStatistics]] which provide details on the current state of the `CircuitBreaker`.
+   */
   case class ThrottledDownEvent(override val id: Identifier, stats: FlowControlStatistics) extends CircuitBreakerEvent
+
+  /**
+   * Uniquely identifies a `CircuitBreaker` within the [[CircuitBreakerRegistry]].
+   */
   case class Identifier(value: String) extends AnyVal { def show: String = value }
+  /**
+   * An evaluator determines whether or not a failure of a protected program should qualify as a systemic failure
+   * to be added to the `CircuitBreaker` statistics and used to determine whether the failure threshold has been
+   * reached and the circuit breaker should be opened. A program can fail for many reasons, including application-level
+   * errors, and it is often not desirable to count these as failures that a circuit breaker should keep track of.
+   * Different subsystems may look for different error or exception hierarchies in this determination (e.g., a
+   * circuit breaker protecting a database may provide an evaluator on creation that looks for exceptions related
+   * to the API used to access the database).
+   * @param tripsCircuitBreaker - a predicate function that is passed a `Throwable` and determines whether or not
+   *   that exception should be one that can trip the circuit breaker.
+   */
   class FailureEvaluator(val tripsCircuitBreaker: Throwable => Boolean)
+  /**
+   * The `FailureEvaluator` companion object, providing smart constructor and a default evaluator.
+   */
   object FailureEvaluator {
+    /**
+     * Smart constructor of a `FailureEvaluator` given the passed-in function value.
+     * @param tripsCircuitBreaker - a predicate function that is passed a `Throwable` and determines whether or not
+     *   that exception should be one that can trip the circuit breaker.
+     * @return failureEvaluator - an instance of `FailureEvaluator` using the passed-in function.
+     */
     def apply(tripsCircuitBreaker: Throwable => Boolean): FailureEvaluator = new FailureEvaluator(tripsCircuitBreaker)
+    /**
+     * The default value for `FailureEvaluator` if one is not provided by the [[CircuitBreakerRegistry]] upon CB creation.
+     * This evaluator treats all program failures as included in the statistics for use in determining whether to
+     * trip ("open") a `CircuitBreaker`.
+     */
     val default: FailureEvaluator = new FailureEvaluator(_ => true)
   }
+
+  /*
+   * Package-private `CircuitBreaker` class which is used by the [[#forFailure]] smart constructor when creating
+   * an instance which protects against cascading failures.
+   */
   private[circuitbreaker] class FailureCircuitBreaker[F[_]](
       id: Identifier,
       config: FailureSettings,
@@ -91,9 +222,9 @@ object CircuitBreaker {
   )(implicit F: Async[F]) extends CircuitBreaker[F](id) {
     type StatisticsVariant = FailureStatistics
 
-    def lastActivity: F[Instant] = statistics.get map { _.lastActivity }
-
     def currentStatistics: F[Statistics] = statistics.get map { s => s: Statistics }
+
+    def lastActivity: F[Instant] = statistics.get map { _.lastActivity }
 
     private[circuitbreaker] def beforeExecution: F[FailureStatistics] = for {
       ts <- now
@@ -118,6 +249,21 @@ object CircuitBreaker {
       } else attemptToAsyncF
     }
   }
+
+  /**
+   * Smart constructor, normally not called directly but rather by the [[CircuitBreakerRegistry]] to create a `CircuitBreaker` instance
+   * which protects against cascading failure.
+   * @param id - uniquely identifies a `CircuitBreaker` instance within the [[CircuitBreakerRegistry]].
+   * @param config - the [[FailureSettings]] configuration for the `CircuitBreaker`.
+   * @param evaluator - the [[FailureEvaluator]] to use for the `CircuitBreaker`, used to determine what program errors should be
+   *   used to determine state changes.
+   * @param publishEvent - the function to call in order to publish an event - the [[CircuitBreakerRegistry]], for instance,
+   *   provides a function which takes the event and returns an effectful program that when run will publish to an `fs2.Stream`
+   *   which interested clients can subscribe to.
+   * @param statistics - a `StateRef[F, FailureStatistics]` which provides a thread-safe atomic reference to an instance of [[statistics.FailureStatistics]],
+   *   which can then be used as the 'state' for the `CircuitBreaker` instance.  See [[StateRef]] for details.
+   * @return circuitBreaker - an effectful program that when run will return an instance of a failure `CircuitBreaker`.
+   */
   def forFailure[F[_]](
     id: Identifier,
     config: FailureSettings,
@@ -126,6 +272,10 @@ object CircuitBreaker {
   )(implicit F: Async[F]): F[CircuitBreaker[F]] =
     StateRef.create[F, FailureStatistics](FailureStatistics.initial(id, config)) map { new FailureCircuitBreaker(id, config, evaluator, publishEvent, _) }
 
+  /*
+   * Package-private `CircuitBreaker` class which is used by the [[#forFlowControl]] smart constructor when creating
+   * an instance which both protects against cascading failures as well as throttling to protect against service overload.
+   */
   private[circuitbreaker] class FlowControlCircuitBreaker[F[_]](
       id: Identifier,
       config: FlowControlSettings,
@@ -137,9 +287,9 @@ object CircuitBreaker {
 
     type StatisticsVariant = FlowControlStatistics
 
-    def lastActivity: F[Instant] = failureCircuitBreaker.lastActivity
-
     def currentStatistics: F[Statistics] = statistics.get map { s => s: Statistics }
+
+    def lastActivity: F[Instant] = failureCircuitBreaker.lastActivity
 
     private[circuitbreaker] def beforeExecution: F[FlowControlStatistics] = {
       def applyFailure(failureStats: FailureStatistics): F[FlowControlStatistics] = statistics.modify(_.withFailure(failureStats))
@@ -177,6 +327,21 @@ object CircuitBreaker {
       if (stats.throttledUp) triggerThrottledUpEvent(stats) else if (stats.throttledDown) triggerThrottledDownEvent(stats) else F.pure(())
     }
   }
+
+  /**
+   * Smart constructor, normally not called directly but rather by the [[CircuitBreakerRegistry]] to create a `CircuitBreaker` instance
+   * which protects against both cascading failure and system overload.
+   * @param id - uniquely identifies a `CircuitBreaker` instance within the [[CircuitBreakerRegistry]].
+   * @param config - the [[FlowControlSettings]] configuration for the `CircuitBreaker`.
+   * @param evaluator - the [[FailureEvaluator]] to use for the `CircuitBreaker`, used to determine what program errors should be
+   *   used to determine state changes.
+   * @param publishEvent - the function to call in order to publish an event - the [[CircuitBreakerRegistry]], for instance,
+   *   provides a function which takes the event and returns an effectful program that when run will publish to an `fs2.Stream`
+   *   which interested clients can subscribe to.
+   * @param statistics - a `StateRef[F, FlowControlStatistics]` which provides a thread-safe atomic reference to an instance of
+   *   [[statistics.FlowControlStatistics]], which can then be used as the 'state' for the `CircuitBreaker` instance.  See [[StateRef]] for details.
+   * @return circuitBreaker - an effectful program that when run will return an instance of a flow control `CircuitBreaker`.
+   */
   def forFlowControl[F[_]](
     id: Identifier,
     config: FlowControlSettings,
