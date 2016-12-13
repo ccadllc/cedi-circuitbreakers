@@ -30,19 +30,19 @@ import CircuitBreaker._
  * The library's main abstraction, representing protection of an effectful
  * program which has a instance of `fs2.Async` in implicit scope.  The API is
  * relatively simple, consisting of one primary function, `protect`, which takes the
- * program to protect and returns that an enhanced version of that program, with the
+ * program to protect and returns that an enhanced version of that program having the
  * ability to fail fast without invoking the underlying service if conditions
- * warrant, ensuring that failure of the service it represents does not result in a cascade
- * of failure by continuing to invoke the service.  The `CircuitBreaker` has two secondary
- * functions: 1.) `currentStatistics`, which provides the current statistics for the `CircuitBreaker`
+ * warrant, ensuring failure of the service it represents does not result in a cascade
+ * of failure.  The `CircuitBreaker` has two secondary
+ * functions: 1.) `currentStatistics`, which provides the current [[statistics.Statistics]]
  * for use by monitoring and dashboarding applications and; 2.) `lastActivity` which provides
- * the `java.time.Instant` that the `CircuitBreaker` was last active.
+ * the `java.time.Instant` timestamp indicating the instant the `CircuitBreaker` was last active.
  *
- * The `CircuitBreaker` is not directly instantiated; rather, a `CircuitBreaker` is requested
- * from the [[CircuitBreakerRegistry]] via the [[CircuitBreakerRegistry#forFailure]] for a
- * `CircuitBreaker` that opens when a configured percentage of protected programs fail within a
- * configured time period or [[CircuitBreakerRegistry#forFlowControl]] for a circuit breaker
- * that, in addition to the failure protected just described, also throttles requests when the
+ * The `CircuitBreaker` is not generally directly instantiated; rather, a `CircuitBreaker` is requested
+ * from the [[CircuitBreakerRegistry]] via the [[CircuitBreakerRegistry#forFailure]] function which
+ * provides a variant that trips/opens given a configured percentage of protected program failures within a
+ * configured time period or via the [[CircuitBreakerRegistry#forFlowControl]] function which provides a
+ * variant that, in addition to the failure protected just described, also throttles requests when the
  * average rate of requests over a configured time period is greater than the observed
  * average rate of processing for the protected program.
  *
@@ -52,12 +52,12 @@ import CircuitBreaker._
 sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async[F]) {
 
   /**
-   * Provide protection over the provided effectful program based to the configuration
-   * of the specific `CircuitBreaker` instance.
+   * Provides protection over the provided effectful program based on the configuration
+   * of `this` instance.
    * @param program - the effectful program represented by `F[A]`
    * @return program - an enhanced version of the passed-in program, wrapped in a protective
    *   layer that will fail fast when a threshold of failures have been observed for the
-   *   underlying service and may also throttle requests when observed inbound rate exceeds
+   *   underlying service and may also throttle requests when the observed inbound rate exceeds
    *   the processing rate.
    */
   final def protect[A](program: F[A]): F[A] = for {
@@ -91,7 +91,7 @@ sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async
 }
 
 /**
- * The companion object for `CircuitBreaker` instance.  The smart constructors for creation of failure and flow control
+ * The companion object for a `CircuitBreaker` instance.  The smart constructors for creation of failure and flow control
  * `CircuitBreaker` instances live here, as do common data types used by `CircuitBreaker` instances.
  */
 object CircuitBreaker {
@@ -139,7 +139,7 @@ object CircuitBreaker {
   }
 
   /**
-   * An Algebriac Data Type (ADT) representing the events which may be published to the event `fs2.Stream` by the `CircuitBreaker`
+   * An Algebriac Data Type (ADT) representing the events which may be published to the `fs2.Stream` by the `CircuitBreaker`
    * whenever there is a state change (a `CircuitBreaker` opening or closing, or a `CircuitBreaker` throttling a request, or
    * increasing/decreasing the rate at which a request is throttled).
    * @param id - identifies the `CircuitBreaker` which triggered this error.
@@ -161,7 +161,7 @@ object CircuitBreaker {
   case class ClosedEvent(override val id: Identifier, stats: FailureStatistics) extends CircuitBreakerEvent
   /**
    * This event is published whenever a `CircuitBreaker` is throttling up requests.  This means that the acceptable inbound rate
-   *   has risen based on observation that the processing rate has improved.
+   *   has risen based on observation that the processing rate has decreased/improved.
    * @param id - identifies the `CircuitBreaker` which triggered this event.
    * @param stats - the [[statistics.FlowControlStatistics]] which provide details on the current state of the `CircuitBreaker`.
    */
@@ -182,12 +182,13 @@ object CircuitBreaker {
    * An evaluator determines whether or not a failure of a protected program should qualify as a systemic failure
    * to be added to the `CircuitBreaker` statistics and used to determine whether the failure threshold has been
    * reached and the circuit breaker should be opened. A program can fail for many reasons, including application-level
-   * errors, and it is often not desirable to count these as failures that a circuit breaker should keep track of.
+   * errors, and it is often not desirable to count these as failures a circuit breaker should keep track of (they
+   * may have no bearing on errors which could cause cascading failures).
    * Different subsystems may look for different error or exception hierarchies in this determination (e.g., a
-   * circuit breaker protecting a database may provide an evaluator on creation that looks for exceptions related
-   * to the API used to access the database).
+   * circuit breaker protecting a database access program may provide an evaluator on creation that looks for
+   * exceptions related to the API used to access the database).
    * @param tripsCircuitBreaker - a predicate function that is passed a `Throwable` and determines whether or not
-   *   that exception should be one that can trip the circuit breaker.
+   *   that exception is be of a type which can, in aggregate, trip the circuit breaker.
    */
   class FailureEvaluator(val tripsCircuitBreaker: Throwable => Boolean)
   /**
@@ -197,7 +198,7 @@ object CircuitBreaker {
     /**
      * Smart constructor of a `FailureEvaluator` given the passed-in function value.
      * @param tripsCircuitBreaker - a predicate function that is passed a `Throwable` and determines whether or not
-     *   that exception should be one that can trip the circuit breaker.
+     *   the exception should be one that can, in aggregate, trip the circuit breaker.
      * @return failureEvaluator - an instance of `FailureEvaluator` using the passed-in function.
      */
     def apply(tripsCircuitBreaker: Throwable => Boolean): FailureEvaluator = new FailureEvaluator(tripsCircuitBreaker)
