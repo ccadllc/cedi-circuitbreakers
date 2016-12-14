@@ -206,8 +206,8 @@ com.ccadllc.cedi.circuitbreaker {
 The cascading failure circuit breaker has a number of configurable parameters, each of
 which is described below.  The circuit breaker settings are typically defined inline subordinate
 to the subsystem that use them in the application configuration.  For example, for a DynamoDb
-client circuit breaker in a `terminal-persistence` library, they would
-be nested in the `dynamodb {  }` settings in the `terminal-persistence` reference.conf
+client circuit breaker in a `persistence` library, they would
+be nested in the `dynamodb {  }` settings in the `persistence` reference.conf
 file.
 
 ```
@@ -264,7 +264,7 @@ failure-circuitbreaker {
 
 #### <a id="flowcontrolconfiguration"></a> Flow Control Circuit Breaker ###
 
-The flow control circuit breaker has a number of configurable parameters, each of which is described below.  The circuit breaker settings are typically defined subordinate to the subsystem that use them in the application configuration.  For example, for a circuit breaker protecting an http client in a `terminal-manager` microservice, they would be nested in the `http-client {  }` settings in the `terminal-manager` reference.conf file.  See the [typesafe documentation](https://github.com/typesafehub/config) for more details on the general usage of this type of configuration.
+The flow control circuit breaker has a number of configurable parameters, each of which is described below.  The circuit breaker settings are typically defined subordinate to the subsystem that use them in the application configuration.  For example, for a circuit breaker protecting an http client in a `service` microservice, they would be nested in the `http-client {  }` settings in the `service` reference.conf file.  See the [typesafe documentation](https://github.com/typesafehub/config) for more details on the general usage of this type of configuration.
 
 ```
 flow-control-circuitbreaker {
