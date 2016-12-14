@@ -19,8 +19,37 @@ package statistics
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-sealed abstract class Statistics extends Product with Serializable { def show: String }
+/**
+ * An Algebriac Data Type (ADT) representing statistics associated with a [[CircuitBreaker]]
+ * instance which can be rendered as a `String` for use in monitoring applications.
+ */
+sealed abstract class Statistics extends Product with Serializable {
+  /**
+   * Renders the statistics as a human-readable string value.
+   */
+  def show: String
+}
 
+/**
+ * This represents the statistics that [[CircuitBreaker]] instances use to track the
+ * success and failure rates of their protected programs, for use in determining when
+ * to trip ("open") the breaker and, when open, to maintain the periodic testing state
+ * for use in determining when the breaker can be closed and normal traffic let flow
+ * to the program.
+ * @param id - the unique identifier of the [[CircuitBreaker]] which "owns" this
+ *   statistics instance.
+ * @param config - the configuration of the associated [[CircuitBreaker]], also used to
+ *   configure this statistics instance.
+ * @param metrics - the sliding time-based metrics for the success/failure indicators of
+ *   the protected program execution.
+ * @param testing - if the associated [[CircuitBreaker]] is open, there will be a value
+ *   here that maintains statistics on program execution tests (periodically allowing
+ *   a program to execute and keeping track of the consecutive successes or, if a test failure,
+ *   resetting these stats).
+ * @param change - if the statistics have undergone any state change, the last change will
+ *   be present here.
+ * @param lastActivity - the timestamp of the last state change for these statistics.
+ */
 case class FailureStatistics private (
     id: CircuitBreaker.Identifier,
     config: FailureSettings,
@@ -40,8 +69,21 @@ case class FailureStatistics private (
 
   def openButUntestable(current: Instant): Boolean = testing exists { !_.intervalHasPast(current) }
 
+  /**
+   * Lifecycle function invoked by the [[CircuitBreaker]] after it performed circuit breaker open checked and determined the program
+   * execution request should go forth (either for testing if the circuit breaker is open or for normal execution).
+   * @return newStatistics - The metrics are updated with the last activity timestamp updated.
+   */
   def beforeExecution(timestamp: Instant): FailureStatistics = copy(lastActivity = timestamp)
 
+  /**
+   * Lifecycle function invoked by the [[CircuitBreaker]] after the program execution has completed.  If goes down two separate
+   * paths depending on whether the circuit breaker is open and therefore the execution is a test or if it is a normal
+   * execution.  In either case, the statistics are updated appropriately and a new value is returned.
+   * @param timestamp - the timestamp of the execution completion.
+   * @param success - the indicator as to whether the request was successful or a failure.
+   * @return newStatistics - The metrics are updated based on the evaluation of the statistics.
+   */
   def afterExecution(timestamp: Instant, success: Boolean): FailureStatistics = testing match {
     case Some(testing) =>
       val updatedTesting = testing.update(timestamp, success)
@@ -60,6 +102,9 @@ case class FailureStatistics private (
       )
       else copy(metrics = effectiveMetrics, testing = None, change = None, lastActivity = timestamp)
   }
+  /**
+   * Render this statistics object in human readable form.
+   */
   def show: String =
     s"id: ${id.show}, failure: ${metrics.percentFailure.show}, full window collected: ${metrics.vector.fullWindowCollected}, stats count: ${metrics.vector.entries.size}, testing: ${testing.fold("N/A")(_.show)}, last change: ${change.fold("None")(_.show)}"
 }
@@ -93,6 +138,22 @@ object FailureStatistics {
     FailureStatistics(id, config, SlidingAggregateMetrics.initial(config.sampleWindow))
 }
 
+/**
+ * This represents the statistics that [[CircuitBreaker]] instances use to track the
+ * inbound and processing rate of their protected programs, for use in determining when
+ * to throttle (fail fast) requests in order to maintain the effective inbound rate
+ * to an acceptable level such that the program (or system/service behind it) is not
+ * overloaded.
+ * @param id - the unique identifier of the [[CircuitBreaker]] which "owns" this
+ *   statistics instance.
+ * @param metrics - the sliding time-based metrics for both the inbound requests per second
+ *   as well as the observed processing rate per second of the protected program.
+ *   the protected program execution.
+ * @param failure - the [[FailureStatistics]] used for the failure component of the flow
+ *   control circuit breaker.
+ * @param change - if the statistics have undergone any state change, the last change will
+ *   be present here.
+ */
 case class FlowControlStatistics private (
     id: CircuitBreaker.Identifier,
     metrics: FlowControlStatistics.Metrics,
@@ -102,35 +163,85 @@ case class FlowControlStatistics private (
 
   import FlowControlStatistics._
 
+  /**
+   * Indicates that the last state change was that the maximum acceptable rate was increased
+   * (the [[CircuitBreaker]] can allow its protected program execution to throttle up).
+   */
   def throttledUp: Boolean = change exists { _ == Change.ThrottledUp }
 
+  /**
+   * Indicates that the last state change was that the maximum acceptable rate was decreased
+   * (the [[CircuitBreaker]] should throttle down the rate of requests it allows through to execution, throttling the service down).
+   */
   def throttledDown: Boolean = change exists { _ == Change.ThrottledDown }
 
+  /**
+   * The mean/average effective inbound rate per second (effective in that requests that are throttled/failed fast are not
+   * counted in the effective rate) over the sample window.
+   * @return meanFlowRate - the mean effective inbound rate.
+   */
   def meanInboundRate: MeanFlowRate = metrics.meanInboundRate
 
+  /**
+   * The mean/average observed processing rate per second over the sample window.
+   * @return meanFlowRate - the mean processing rate.
+   */
   def meanProcessingRate: MeanFlowRate = metrics.meanProcessingRate
 
+  /**
+   * The maximum acceptable inbound rate.  This is differentated from the mean processing rate in that you can configure
+   * a percentage that we should allow the inbound rate exceed the processing rate (to account for spikes and valleys, for instance).
+   * This value is the mean processing rate + the added percentage over allowed, if it is configured as a non-zero value.
+   * @return maxAcceptableRate - the maximum acceptable rate, if it has been calculated yet (it will not be calculated until
+   *   a full window of statistics has been collected).
+   */
   def maxAcceptableRate: Option[MeanFlowRate] = metrics.maxAcceptableRate
 
+  /**
+   * Should the current request be throttled (failed fast), given this statistics object? This function will evaluat
+   * the inbound rate and processing rate averages, assuming both have followed a full window's worth of statistics, and
+   * determine if the current effective inbound rate is greater than the maximum acceptable rate, or if the configured hard
+   * limit rate has been exceeded.  If either of those things evaluate true, this function will also.
+   */
   def shouldBeThrottled: Boolean = indicatesShouldBeThrottled(metrics)
 
+  /**
+   * Convenience copy constructor, apply the passed-in [[FailureStatistics]].
+   */
   def withFailure(failure: FailureStatistics): FlowControlStatistics = copy(failure = failure)
 
+  /**
+   * Lifecycle function invoked by the [[CircuitBreaker]] before it checks to see if it should throttle a request, passing
+   * a timestamp indicating the instant a request has been received.
+   * @return newStatistics - The metrics are updated with the timestamp of the request received.
+   */
   def beforeThrottle(startTime: Instant): FlowControlStatistics = {
     val updated = metrics.beforeThrottle(startTime)
     copy(metrics = updated, change = throttlingChange(updated))
   }
 
+  /**
+   * Lifecycle function invoked by the [[CircuitBreaker]] after it performed throttling checks and determined the program
+   * execution request should go forth.
+   * @return newStatistics - The metrics are updated, including update to the effective inbound rate per second.
+   */
   def beforeExecution: FlowControlStatistics = {
     val updated = metrics.beforeExecution
     copy(metrics = updated, change = throttlingChange(updated))
   }
 
+  /**
+   * Lifecycle function invoked by the [[CircuitBreaker]] after the program execution has completed
+   * @return newStatistics - The metrics are updated, including update to the effective processing rate per second.
+   */
   def afterExecution: FlowControlStatistics = {
     val updated = metrics.afterExecution
     copy(metrics = updated, change = throttlingChange(updated))
   }
 
+  /**
+   * Render this statistics object in human readable form.
+   */
   def show: String = s"id: ${id.show}, metrics: ${metrics.show}"
 
   private def throttlingChange(updated: Metrics): Option[FlowControlStatistics.Change] = for {

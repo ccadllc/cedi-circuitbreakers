@@ -63,14 +63,15 @@ val databaseCircuitBreakerSettings: FailureSettings = FailureSettings(
 )
 
 /* The very simple data type which will represent the database object we are querying for this example. */
-case class SecurityDomain(id: UUID)
+case class QuarterlyProductSales(productId: UUID, productName: String, totalSales: Long)
 
 /* A simple stub to represent a query to a remote dynamodb persistent database */
-def retrieveDatabaseSecurityDomains: Task[Vector[SecurityDomain]] = Task.delay(Vector(SecurityDomain(UUID.randomUUID)))
+def retrieveQuarterlyProductSales: Task[Vector[QuarterlyProductSales]] =
+  Task.delay(Vector(QuarterlyProductSales(UUID.randomUUID, "widgets", 565000L)))
 
 /*
  * A service to abstract interactions with a remote database.  For our example purposes, it only has one
- * entry point, to query for `SecurityDomain` objects.
+ * entry point, to query for `QuarterlyProductSales` objects.
  */
 class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSettings: FailureSettings) {
   /*
@@ -89,7 +90,7 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSe
     case _ => false
   }
 
-  def getAllSecurityDomains: Task[Vector[SecurityDomain]] = for {
+  def getAllQuarterlyProductSales: Task[Vector[QuarterlyProductSales]] = for {
     /*
      * The registry will look up the circuit breaker by identifier,
      * creating it if it does not yet exist.
@@ -105,7 +106,7 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSe
      * until the inbound rate has been brought down to a level the processing rate indicates
      * can be handled.
      */
-    result <- cb.protect(retrieveDatabaseSecurityDomains)
+    result <- cb.protect(retrieveQuarterlyProductSales)
   } yield result
 }
 
@@ -117,7 +118,7 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSe
 val protectedSystem = for {
   cbRegistry <- CircuitBreakerRegistry.create[Task](circuitBreakerRegistrySettings)
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
-  result <- dbService.getAllSecurityDomains
+  result <- dbService.getAllQuarterlyProductSales
 } yield ()
 
 /*
@@ -162,7 +163,7 @@ def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[Task]): Task[
 val protectedSystem = for {
   cbRegistry <- CircuitBreakerRegistry.create[Task](circuitBreakerRegistrySettings)
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
-  result <- dbService.getAllSecurityDomains
+  result <- dbService.getAllQuarterlyProductSales
   _ <- monitorCircuitBreakerEvents(cbRegistry)
 } yield ()
 

@@ -33,7 +33,7 @@ import statistics.Statistics
 
 /**
  * The circuit breaker registry maintains the non-persistent collection of [[CircuitBreaker]]s created
- * for a given JVM.  It provides functions to create and retrieve circuit breakers and subscribe to
+ * for a given VM.  It provides functions to create and retrieve circuit breakers and to subscribe to
  * `fs2.Stream`s of [[statistics.Statistics]] and
  * [[CircuitBreaker#CircuitBreakerEvent]]s.  A `CircuitBreakerRegistry`
  * is not normally directly instantiated but rather is created via the smart constructor in the companion
