@@ -33,17 +33,12 @@ import statistics.Statistics
 
 /**
  * The circuit breaker registry maintains the non-persistent collection of [[CircuitBreaker]]s created
- * for a given VM.  It provides functions to create and retrieve circuit breakers and to subscribe to
- * `fs2.Stream`s of [[statistics.Statistics]] and
- * [[CircuitBreaker#CircuitBreakerEvent]]s.  A `CircuitBreakerRegistry`
- * is not normally directly instantiated but rather is created via the smart constructor in the companion
- * object.  The effectful program types protected are fixed by an `F` where an instance of `fs2.Async[F]` is
+ * for a given VM.  It provides the means to create and retrieve circuit breakers and to subscribe to
+ * `fs2.Stream`s of [[statistics.Statistics]] and state change [[CircuitBreaker#CircuitBreakerEvent]]s.
+ * A `CircuitBreakerRegistry` instance is not directly instantiated but rather created via the smart
+ * constructor in the companion object.  The effectful program types protected by the [[CircuitBreaker]]s
+ * created and maintained with this registry are fixed by an `F` where an instance of `fs2.Async[F]` is
  * provided in implicit scope.
- * @param state - the [[State]] of the registry which can be updated and retrieved in an atomic manner.
- *   See [[StateRef]] for details.
- * @param eventTopic - the `fs2.async.mutable.Topic` to which we can publish state change events and from which
- *   subscribers can be notified of state changes.
- * @param shutdownTrigger - an effectful data type which allows the registry to clean up when shutting down.
  */
 final class CircuitBreakerRegistry[F[_]] private (
     state: StateRef[F, State[F]],
@@ -54,7 +49,7 @@ final class CircuitBreakerRegistry[F[_]] private (
   /**
    * Creates an `fs2.Stream` of [[CircuitBreaker#CircuitBreakerEvent]]s by subscribing to the event `fs2.async.mutable.Topic` maintained
    * by the registry.
-   * @param maxQueued - the maximum number of events to queue before dropping the oldest.
+   * @param maxQueued - the maximum number of events to queue pending consumption before dropping the oldest.
    * @return streamOfEvents - an `fs2.Stream[F, CircuitBreakerEvent]` constituting the stream of state change events.
    */
   def events(maxQueued: Int): Stream[F, CircuitBreakerEvent] =
@@ -137,9 +132,9 @@ final class CircuitBreakerRegistry[F[_]] private (
 
 /**
  * The companion object to the `CircuitBreakerRegistry` - contains a smart constructor for registry creation,
- *   optionally registering a garbage collector to reap [[CircuitBreaker]]s within the registry when they
- *   have not been accessed for a given period of time.  The companion also defines private data types used by the
- *   registry.
+ *   optionally registering a garbage collector to reap [[CircuitBreaker]]s managed by the registry when they
+ *   have not been accessed for a configured period of time.  The companion also defines private data types used
+ *   internally by the registry.
  */
 object CircuitBreakerRegistry {
   private class ShutdownTrigger[F[_]: Async](val signal: Signal[F, Boolean]) {

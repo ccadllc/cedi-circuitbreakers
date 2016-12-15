@@ -29,12 +29,12 @@ class FlowControlCircuitBreakerTest extends WordSpec with TestSupport {
       val registry = CircuitBreakerRegistry.create[Task](testRegistryConfig).unsafeRun
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRun
       val tseo = TestStreamedEventObserver.create(registry)
-      protectFlowControl(cb, 50.milliseconds, 10.milliseconds, 750.milliseconds)
+      protectFlowControl(cb, 20.milliseconds, 5.milliseconds, 750.milliseconds)
       val throttledEvents = tseo.throttledDownEvents(id)
       val maxAcceptableRate = throttledEvents.lastOption.value.stats.maxAcceptableRate.value.perSecond
       val meanInboundRate = throttledEvents.lastOption.value.stats.meanInboundRate.perSecond
       meanInboundRate should be > maxAcceptableRate
-      protectFlowControl(cb, 200.milliseconds, 50.milliseconds, 500.milliseconds)
+      protectFlowControl(cb, 100.milliseconds, 5.milliseconds, 500.milliseconds)
       val throttledDownEvents = tseo.throttledDownEvents(id)
       throttledDownEvents.lastOption.value.stats.maxAcceptableRate.value.perSecond should be < maxAcceptableRate
     }
@@ -43,16 +43,16 @@ class FlowControlCircuitBreakerTest extends WordSpec with TestSupport {
       val registry = CircuitBreakerRegistry.create[Task](testRegistryConfig).unsafeRun
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRun
       val tseo = TestStreamedEventObserver.create(registry)
-      protectFlowControl(cb, 50.milliseconds, 10.milliseconds, 750.milliseconds)
+      protectFlowControl(cb, 20.milliseconds, 10.milliseconds, 750.milliseconds)
       val throttledEvents = tseo.throttledDownEvents(id)
       val maxAcceptableRate = throttledEvents.headOption.value.stats.maxAcceptableRate.value.perSecond
       val meanInboundRate = throttledEvents.headOption.value.stats.meanInboundRate.perSecond
       meanInboundRate should be > maxAcceptableRate
-      protectFlowControl(cb, 500.milliseconds, 20.milliseconds, 500.milliseconds)
+      protectFlowControl(cb, 250.milliseconds, 20.milliseconds, 500.milliseconds)
       val throttledDownEvents = tseo.throttledDownEvents(id)
       val decreasedMaxAcceptableRate = throttledDownEvents.lastOption.value.stats.maxAcceptableRate.value.perSecond
       decreasedMaxAcceptableRate should be < maxAcceptableRate
-      protectFlowControl(cb, 100.milliseconds, -20.milliseconds, 500.milliseconds)
+      protectFlowControl(cb, 50.milliseconds, -10.milliseconds, 500.milliseconds)
       val throttledUpEvents = tseo.throttledUpEvents(id)
       val increasedMaxAcceptableRate = throttledUpEvents.headOption.value.stats.maxAcceptableRate.value.perSecond
       increasedMaxAcceptableRate should be > decreasedMaxAcceptableRate

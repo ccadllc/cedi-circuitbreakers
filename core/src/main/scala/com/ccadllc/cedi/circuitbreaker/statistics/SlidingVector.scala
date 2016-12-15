@@ -21,10 +21,10 @@ import java.time.Instant
 /**
  * This data type provides the storage and access of a sliding
  * time window of statistics, used to maintain aggregate program failures
- * as well as observed inbound program invocation and processing rates.
+ * as well as observed inbound program request and processing rates.
  * @param window - the [[SampleWindow]] for a `SlidingVector` indicates the time
  *   period (the `scala.concurrent.duration.FiniteDuration`) for which this
- *   collection should maintain statistics. For instance a sample window of "five
+ *   collection should maintain statistics. For instance, a sample window of "five
  *   minutes" would indicate that the `entries` `Vector` contains items with a
  *   time stamp no more than five minutes in the past.
  * @param entries - the `scala.collection.immutable.Vector` of `SlidingVector.TimeStamped[A]`
