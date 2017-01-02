@@ -33,12 +33,12 @@ import statistics.Statistics
 
 /**
  * The circuit breaker registry maintains the non-persistent collection of [[CircuitBreaker]]s created
- * for a given VM.  It provides the means to create and retrieve circuit breakers and to subscribe to
- * `fs2.Stream`s of [[statistics.Statistics]] and state change [[CircuitBreaker#CircuitBreakerEvent]]s.
- * A `CircuitBreakerRegistry` instance is not directly instantiated but rather created via the smart
- * constructor in the companion object.  The effectful program types protected by the [[CircuitBreaker]]s
- * created and maintained with this registry are fixed by an `F` where an instance of `fs2.Async[F]` is
- * provided in implicit scope.
+ * for a given virtual machine.  It provides the means to create and retrieve circuit breakers and to
+ * subscribe to `fs2.Stream`s of [[statistics.Statistics]] and [[CircuitBreaker#CircuitBreakerEvent]]
+ * state change events.  A `CircuitBreakerRegistry` instance is not directly instantiated but rather
+ * created via the smart constructor in the companion object.  The effectful program types protected
+ * by the [[CircuitBreaker]]s created and maintained with this registry are fixed by an `F` where an
+ * instance of `fs2.Async[F]` is provided in implicit scope.
  */
 final class CircuitBreakerRegistry[F[_]] private (
     state: StateRef[F, State[F]],
@@ -58,7 +58,7 @@ final class CircuitBreakerRegistry[F[_]] private (
   /**
    * Creates a `fs2.Stream` of [[statistics.Statistics]] for all [[CircuitBreaker]]s which are emitted at the interval provided.
    * @param retrievalInterval - the interval at which statistics are retrieved from registered [[CircuitBreaker]]s and emitted
-   *  to the stats stream.
+   *   to the stats stream.
    * @return streamOfStatistics - an `fs2.Stream[F, Statistics]` constituting the stream of statistics.
    */
   def statistics(retrievalInterval: FiniteDuration): Stream[F, Statistics] = {
@@ -77,6 +77,7 @@ final class CircuitBreakerRegistry[F[_]] private (
 
   /**
    * Removes the [[CircuitBreaker]] whose identifier is passed-in, if it exists.  It is a no-op if the identifier does not exist.
+   * @param id - uniquely identifies a [[CircuitBreaker]] instance within this registry.
    * @return removalProgram - a program which when run will remove the [[CircuitBreaker]] identified by the [[CircuitBreaker#Identifier]],
    *   if it exists.
    */
@@ -132,9 +133,9 @@ final class CircuitBreakerRegistry[F[_]] private (
 
 /**
  * The companion object to the `CircuitBreakerRegistry` - contains a smart constructor for registry creation,
- *   optionally registering a garbage collector to reap [[CircuitBreaker]]s managed by the registry when they
- *   have not been accessed for a configured period of time.  The companion also defines private data types used
- *   internally by the registry.
+ * optionally registering a garbage collector to reap [[CircuitBreaker]]s managed by the registry when they
+ * have not been accessed for a configured period of time.  The companion also defines private data types used
+ * internally by the registry.
  */
 object CircuitBreakerRegistry {
   private class ShutdownTrigger[F[_]: Async](val signal: Signal[F, Boolean]) {
@@ -161,7 +162,10 @@ object CircuitBreakerRegistry {
    * @param strategy - the `fs2.Strategy` used for the execution of an effectful program `F` with a `fs2.util.Async` in implicit scope.
    * @param scheduler - the `fs2.Scheduler` used for the execution of periodic tasks, such as the statistics stream and the
    *   registry [[CircuitBreaker]] garbage collection.
-   * @param F - the `fs2.util.Async` instance that describes how the programs protected by [[CircuitBreaker]]s in this registry are executed.
+   * @param F - the `fs2.util.Async[F]` instance that describes how the programs protected by [[CircuitBreaker]]s in this registry are executed.
+   * @tparam F - the type of effectful programs the circuit breakers in this registry will protect.
+   * @return circuitBreakerRegistry - an effectful program describing the creation of the circuit breaker registry which
+   *   will be executed when the program is run.
    */
   def create[F[_]](settings: RegistrySettings)(implicit strategy: Strategy, scheduler: Scheduler, F: Async[F]): F[CircuitBreakerRegistry[F]] = {
     def collectGarbageInBackground(state: StateRef[F, State[F]], shutdownSignal: Signal[F, Boolean]) = {
