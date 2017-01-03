@@ -109,31 +109,143 @@ case class FailureStatistics private (
     s"id: ${id.show}, failure: ${metrics.percentFailure.show}, full window collected: ${metrics.vector.fullWindowCollected}, stats count: ${metrics.vector.entries.size}, testing: ${testing.fold("N/A")(_.show)}, last change: ${change.fold("None")(_.show)}"
 }
 
+/**
+ * The companion object to the `FailureStatistics` instances, providing various data types and constructor
+ * functions used by and for those instances.
+ */
 object FailureStatistics {
-  sealed abstract class Change extends Product with Serializable { def show: String }
-  object Change {
-    case object Opened extends Change { def show: String = "opened" }
-    case object Closed extends Change { def show: String = "closed" }
+  /**
+   * An Alegraic Data Type (ADT) which represents the latest state change for a `FailureStatistics` instance.
+   * If the `changed` property of the `FailureStatististics` instance is set to Some(`Opened`), it indicates the
+   * associated `CircuitBreaker` has just transitioned to open, if set to Some(`Closed`), it indicates it has just
+   * tranisitioned to closed, and if set to None, it indicates that the `CircuitBreaker` was already opened or
+   * closed prior to the latest statistics update.
+   */
+  sealed abstract class Change extends Product with Serializable {
+    /**
+     * Renders the change as a human-readable string value.
+     */
+    def show: String
   }
+  object Change {
+    /** Indicates that the associated `CircuitBreaker` has just been opened. */
+    case object Opened extends Change {
+      /**
+       * Renders the opened change as a human-readable string value.
+       */
+      def show: String = "opened"
+    }
+
+    /** Indicates that the associated `CircuitBreaker` has just been closed. */
+    case object Closed extends Change {
+      /**
+       * Renders the closed change as a human-readable string value.
+       */
+      def show: String = "closed"
+    }
+  }
+
+  /**
+   * The sliding statistics, which maintains a pass/failure boolean indicator for results of the
+   * execution of programs protected by the associated [[CircuitBreaker]].  Each pass/failure indicator
+   * is associated with a `java.time.Instant` timestamp in the [[SlidingVector]] contained here and the
+   * sliding vector keeps only the items with associated timestamps in the configured range of the statistics
+   * window (specified when the `SlidingVector[Boolean]` is created).
+   * @param vector - the `SlidingVector[Boolean]` containing the pass/fail indicators for the latest
+   *   protected program executions which fall within the configured time range of the statistics window (e.g.,
+   *   a 30s configuration would keep all items with a timestamp that falls within 30 seconds of the current time).
+   */
   case class SlidingAggregateMetrics(vector: SlidingVector[Boolean]) {
+    /**
+     * Adds a pass/failure boolean indicator and associated timestamp to the sliding vector, resulting in a new
+     * instance of this data type with an updated `vector`.
+     * @param timestamp - a `java.time.Instant` timestamp (usually close to the current time).
+     * @param value - a `Boolean` value representing that the protected program has succeeded or failed (where the
+     *   failure determined by the associated `CircuitBreaker` `Evaluator` is applicable for consideration in determining
+     *   whether or not to open the `CircuitBreaker`).
+     * @return newSlidingAggregateMetrics - a new instance of this data type with an updated `vector` now containing the new
+     *   value and possibly having removed older values which no longer fall within its time range.
+     */
     def addToWindow(timestamp: Instant, value: Boolean): SlidingAggregateMetrics =
       copy(vector = vector.add(timestamp, value))
+    /**
+     * Resets the aggregate metrics by resetting the contained `SlidingVector[Boolean]` to its initial value.
+     * @return newSlidingAggregateMetrics - a new instance of this data type with an updated `vector` reset to its initial
+     *   value.
+     */
     def reset: SlidingAggregateMetrics = copy(vector = vector.reset)
+
+    /**
+     * The current percentage of failures contained within the sliding vector - if the vector has not yet collected a
+     *   sufficient number of elements to properly derived an average (determined by checking to see if a full time window
+     *   of results have been collected), it returns 0 percent; otherwise, the percentage is calculated and stored in this
+     *   value.
+     */
     val percentFailure: Percentage = if (!vector.fullWindowCollected) Percentage.minimum else {
       val countF: Int = vector.entries.foldLeft(0) { case (count, success) => if (!success.value) count + 1 else count }
       val total = vector.entries.size
       Percentage.withinLimits(if (total == 0) 0.0 else ((countF.toDouble / total.toDouble) * 100.0))
     }
   }
+  /**
+   * The companion object for instances of `SlidingAggregateMetrics` instances provides a smart constructor for an initial
+   * instance (all other instances are created via instance methods).
+   */
   object SlidingAggregateMetrics {
+    /**
+     * Creates an initial instance, with a [[SlidingVector]] constructed using the passed-in [[SampleWindow]], which specifies
+     * the time-range for which to maintain individual pass/fail statistics.  All other instances are created by instance methods
+     * when the state needs updating.
+     * @param window - a `SampleWindow` which specifies the time-range desired for the `SlidingVector[Boolean]`.
+     * @return initialSlidingAggregateMetrics - the initial instance of the `SlidingAggregateMetrics` data type.
+     */
     def initial(window: SampleWindow): SlidingAggregateMetrics = SlidingAggregateMetrics(SlidingVector[Boolean](window))
   }
+  /**
+   * This data type is used for testing the protected program by periodically letting the program execute when the associated
+   * [[CircuitBreaker]] is open, so that we can determine when it is appropriate to close the CB after a configured minimum
+   * number of consecutive execution successes.
+   * @param config - the [[FailureSettings#Test]] configuration for testing an open `CircuitBreaker`, including the minimum number of
+   *   consecutive tests to close an open CB and the minimum time interval between tests (between which program executions are failed
+   *   fast without executing).
+   * @param timestamp - the `java.time.Instant` timestamp indicating the time the last test was executed.[[FailureSettings#Test]]
+   *   configuration for testing an open `CircuitBreaker`.
+   * @param successes - the current number of consecutive test execution successes.
+   */
   case class Testing(config: FailureSettings.Test, timestamp: Instant = Instant.EPOCH, successes: Int = 0) {
+    /**
+     * Renders the test as a human-readable string value.
+     */
     def show: String = s"$successes successes"
+
+    /**
+     * Updates this testing instance, passing in the test success/failure indicator and a timestamp signifying when
+     * the test took place.  It returns an updated instance with the state modified appropriately.
+     * @param ts - a `java.time.Instant` timestamp indicating the time at which the test is being updated.
+     * @param success - a boolean flag indicating whether or not the test execution was successful.
+     * @return updatedTest - a new instance with the state updated appropriately.
+     */
     def update(ts: Instant, success: Boolean): Testing =
       if (success) copy(timestamp = ts, successes = successes + 1) else copy(timestamp = ts, successes = 0)
+
+    /**
+     * Used by [[CircuitBreaker]]s to determine if a test interval time has passed (or is in the past, thus the passed/past
+     * play on words of the name).
+     * @param current - the current `java.time.Instant` timestamp.
+     * @return timeHasPassed - a `Boolean` indicating that the configured test time interval has passed between the `timestamp`
+     *   of this instance and the `current` timestamp passed into this method.
+     */
     def intervalHasPast(current: Instant): Boolean = timestamp.isBefore(current minusMillis config.interval.toMillis)
   }
+  /**
+   * Creates an initial instance of the `FailureStatistics` with the passed-in identifier and configuration.  All other
+   * instances are created by instance methods when the state needs updating.
+   * @param id - the [[CircuitBreaker#Identifier]] of the associated [[CircuitBreaker]] instance, binding the
+   *   two together.
+   * @param config - the [[FailureSettings]] of the associated `CircuitBreaker`, used to configure the statistics
+   *   as appropriate.
+   * @return initialFailureSettings - the initial instance for this data type.
+   */
   def initial(id: CircuitBreaker.Identifier, config: FailureSettings): FailureStatistics =
     FailureStatistics(id, config, SlidingAggregateMetrics.initial(config.sampleWindow))
 }
@@ -166,25 +278,27 @@ case class FlowControlStatistics private (
   /**
    * Indicates that the last state change was that the maximum acceptable rate was increased
    * (the [[CircuitBreaker]] can allow its protected program execution to throttle up).
+   * @return isThrottledUp - the last state change indicates that the maximum acceptable rate has been increased.
    */
   def throttledUp: Boolean = change exists { _ == Change.ThrottledUp }
 
   /**
    * Indicates that the last state change was that the maximum acceptable rate was decreased
    * (the [[CircuitBreaker]] should throttle down the rate of requests it allows through to execution, throttling the service down).
+   * @return isThrottledDown - the last state change indicates that the maximum acceptable rate has been decreased.
    */
   def throttledDown: Boolean = change exists { _ == Change.ThrottledDown }
 
   /**
    * The mean/average effective inbound rate per second (effective in that requests that are throttled/failed fast are not
    * counted in the effective rate) over the sample window.
-   * @return meanFlowRate - the mean effective inbound rate.
+   * @return meanInboundFlowRate - the mean effective inbound rate.
    */
   def meanInboundRate: MeanFlowRate = metrics.meanInboundRate
 
   /**
    * The mean/average observed processing rate per second over the sample window.
-   * @return meanFlowRate - the mean processing rate.
+   * @return meanProcessingFlowRate - the mean processing rate.
    */
   def meanProcessingRate: MeanFlowRate = metrics.meanProcessingRate
 
@@ -202,17 +316,22 @@ case class FlowControlStatistics private (
    * the inbound rate and processing rate averages, assuming both have followed a full window's worth of statistics, and
    * determine if the current effective inbound rate is greater than the maximum acceptable rate, or if the configured hard
    * limit rate has been exceeded.  If either of those things evaluate true, this function will also.
+   * @return shouldBeThrottled - true if the current request should be throttled.
    */
   def shouldBeThrottled: Boolean = indicatesShouldBeThrottled(metrics)
 
   /**
-   * Convenience copy constructor, apply the passed-in [[FailureStatistics]].
+   * Convenience copy constructor, applying the passed-in [[FailureStatistics]].
+   * @param failure - a [[FailureStatistics]] to copy into this `FlowControlStatistics` instance.
+   * @return newFlowControlStatsInstance - a new instance of this data type with an updated `failure` property.
    */
   def withFailure(failure: FailureStatistics): FlowControlStatistics = copy(failure = failure)
 
   /**
    * Lifecycle function invoked by the [[CircuitBreaker]] before it checks to see if it should throttle a request, passing
    * a timestamp indicating the instant a request has been received.
+   * @param startTime - a `java.time.Instant` timestamp indicating the start time of a request (or, to be more precise, the
+   *   time the request was received, since it may not be started at all should it get throttled).
    * @return newStatistics - The metrics are updated with the timestamp of the request received.
    */
   def beforeThrottle(startTime: Instant): FlowControlStatistics = {
@@ -268,15 +387,74 @@ case class FlowControlStatistics private (
   )
 }
 
+/**
+ * The companion object to the `FlowControlStatistics` instances, providing various data types and constructor
+ * functions used by and for those instances.
+ */
 object FlowControlStatistics {
-
-  sealed abstract class Change extends Product with Serializable { def show: String }
-  object Change {
-    case object ThrottledUp extends Change { def show: String = "throttled up" }
-    case object ThrottledDown extends Change { def show: String = "throttled down" }
+  /**
+   * An Alegraic Data Type (ADT) which represents the latest state change for a `FlowControlStatistics` instance.
+   * If the `changed` property of the `FlowControlStatististics` instance is set to Some(`ThrottledUp`), it indicates the
+   * associated `CircuitBreaker` can allow / has just allowed more requests to execute per second (the maximum acceptable
+   * rate has increased), if set to Some(`ThrottledDown`), it indicates it must allow / has just allowed fewer requests to
+   * execute per second (the maximum acceptable rate has decreased), and if set to None, it indicates that the `CircuitBreaker`
+   * maximum allowable inbound rate has not been modified with the latest state change.
+   */
+  sealed abstract class Change extends Product with Serializable {
+    /**
+     * Renders the change as a human-readable string value.
+     */
+    def show: String
   }
+  object Change {
+
+    /** Indicates that the associated `CircuitBreaker` has just been allowed to execute more requests per second. */
+    case object ThrottledUp extends Change {
+      /**
+       * Renders the throttled up change as a human-readable string value.
+       */
+      def show: String = "throttled up"
+    }
+
+    /** Indicates that the associated `CircuitBreaker` has just been required to execute fewer requests per second. */
+    case object ThrottledDown extends Change {
+      /**
+       * Renders the throttled down change as a human-readable string value.
+       */
+      def show: String = "throttled down"
+    }
+  }
+
+  /**
+   * The sliding statistics, which maintains a rate per second for the associated [[CircuitBreaker]].  For each associated
+   * `CircuitBreaker`, there are two instances of this data type, one where the rate represents the number of inbound
+   * requests per second and one where the rate represents the number of processed requests per second.  Each one-second
+   * sample rate is associated with a `java.time.Instant` timestamp in the [[SlidingVector]] contained here and the
+   * sliding vector keeps only the items with associated timestamps in the configured range of the statistics
+   * window (specified when the `SlidingVector[Boolean]` is created).
+   * @param vector - the `SlidingVector[Long]` containing the request rate per second for the latest
+   *   protected program executions which fall within the configured time range of the statistics window (e.g.,
+   *   a 30s configuration would keep all items with a timestamp that falls within 30 seconds of the current time).
+   */
   case class SlidingAggregateMetrics(vector: SlidingVector[Long]) {
+    /**
+     * The mean/average of the per-second rate values in the contained `SlidingVector[Long]`.
+     */
     val mean: Double = if (vector.entries.isEmpty) 0.0 else vector.entries.map(_.value.toDouble).sum / vector.entries.size.toDouble
+    /**
+     * Add the per-second rate value to the `SlidingVector[Long]`, associated with the passed-in `java.time.Instant` timestamp. If
+     * there has been more than one second of idle time (more than one second since the last time `addToWindow` was called), pass in
+     * the number of 0 per-second sample values to first add to the sliding vector to represent that idle time, providing them with
+     * associated timestamps increasingly in the past by one second intervals as appropriate.  The sliding vector is truncated if necessary
+     * to remove any values with timestamps older than the time-range of the sample window as configured when this data type is initially
+     * constructed.
+     * @param timestamp - the `java.time.Instant` timestamp, indicating the time at the end of the second for which the `value` parameter
+     *   represents the per-second request rate.
+     * @param value - the `Long` value indicating the number of requests received or processed in the past second.
+     * @param zeroFillIdleTime - the number of idle seconds which have passed since the last call to this function, used to zero fill the
+     *   sliding vector of per-second rate values to represent that idle time.
+     * @return updatedSlidingAggregateMetrics - a new instance of this data type, updated appropriately.
+     */
     def addToWindow(timestamp: Instant, value: Long, zeroFillIdleTime: Long): SlidingAggregateMetrics = {
       val idleTimeAdjusted = 1L.to(zeroFillIdleTime.min(vector.window.maximumEntries.toLong)).toVector.reverse.foldLeft(vector) {
         case (vec, i) => vec.add(timestamp.minusSeconds(i), value)
@@ -284,43 +462,177 @@ object FlowControlStatistics {
       copy(vector = idleTimeAdjusted.add(timestamp, value))
     }
   }
+  /**
+   * The companion object for instances of `SlidingAggregateMetrics` instances provides a smart constructor for an initial
+   * instance (all other instances are created via instance methods).
+   */
   object SlidingAggregateMetrics {
+    /**
+     * Creates an initial instance, with a [[SlidingVector]] constructed using the passed-in [[SampleWindow]], which specifies
+     * the time-range for which to maintain individual per-second request rate statistics.  All other instances are created by
+     * instance methods when the state needs updating.
+     * @param window - a `SampleWindow` which specifies the time-range desired for the `SlidingVector[Long]`.
+     * @return initialSlidingAggregateMetrics - the initial instance of the `SlidingAggregateMetrics` data type.
+     */
     def initial(window: SampleWindow): SlidingAggregateMetrics = SlidingAggregateMetrics(SlidingVector[Long](window))
   }
 
-  case class FlowRateSample(startTime: Instant, perSecondCount: Long) { def show: String = s"$perSecondCount successes" }
-  case class MeanFlowRate(perSecond: Double) { def show: String = s"$perSecond per second" }
+  /**
+   * This represents the current second's request count (either inbound or processed, depending on the
+   * usage) and the starting timestamp.  When the second has elapsed, the count is added to the
+   * associated sliding statistics collection, the timestamp updated and the count reset to zero.
+   * @param startTime - a `java.time.Instant` timestamp representing the start of the current second.
+   * @param perSecondCount - the count of requests during this second.
+   */
+  case class FlowRateSample(startTime: Instant, perSecondCount: Long) {
+    /**
+     * Renders the flow rate sample as a human-readable string value.
+     */
+    def show: String = s"$perSecondCount successes"
+  }
+  case class MeanFlowRate(perSecond: Double) {
+    /**
+     * Renders the mean flow rate as a human-readable string value.
+     */
+    def show: String = s"$perSecond per second"
+  }
 
+  /**
+   * Maintains the sliding window per second request rates as well as the current second's request count.
+   * @param perSecond - a [[SlidingAggregateMetrics]] instance which contains a sliding window of the aggregate rate statistics.
+   * @param currentSample - a [[FlowRateSample]] instance which contains the current per-second request count
+   *   and a timestamp indicating the start time of this count (when a second has past, the value is added to the sliding
+   *   window of values and cleared to begin the next count).
+   */
   case class AggregateFlowRate(perSecond: SlidingAggregateMetrics, currentSample: FlowRateSample) {
+    /**
+     * The mean/average of the per-second rate values in the contained `SlidingAggregateMetrics`.
+     */
     def mean: Double = perSecond.mean
+
+    /**
+     * Indicates whether we've collected enough per-second request rate samples to completely fill the sliding window of values,
+     * indicating we have enough data to derive meaningful statistics.  For instance, if the sample window for the sliding vector
+     * is 30 seconds, this will return true if we've collected over 30 samples.
+     */
     def fullWindowCollected: Boolean = perSecond.vector.fullWindowCollected
+
+    /**
+     * Increments the per-second request rate count.
+     * @return newAggregateFlowRate - A new instance of this data type with the per-second count incremented by 1.
+     */
     def addToSample: AggregateFlowRate = copy(currentSample = currentSample.copy(perSecondCount = currentSample.perSecondCount + 1))
+
+    /**
+     * Possibly age the current per-second sample, if more than one second has passed since the current per-second sample count started,
+     * by copying the count into the aggregate sliding window and resetting the current sample count to 0 and its start timeto the passed-in
+     * `time` parameter.  The aggregate sliding window of stats is first filled with zero count samples for the number of seconds over 2
+     * which have occurred since the last time this function was invoked.
+     * @param time - the `java.time.Instant` timestamp representing the current time, usually (or at least the relative current time;
+     *   not necessarily the current wall clock time).
+     * @return newAggregateFlowRate - updated with the state updated if sufficient time has passed or else it returns itself.
+     */
     def ageSample(time: Instant): AggregateFlowRate = if (time.isBefore(currentSample.startTime.plusSeconds(1))) this else {
       val secondsPast = if (currentSample.startTime == Instant.EPOCH) 0L else ChronoUnit.SECONDS.between(currentSample.startTime, time)
       val zeroFillIdleTime = if (secondsPast < 2L) 0L else secondsPast - 1L
       AggregateFlowRate(perSecond.addToWindow(time, currentSample.perSecondCount, zeroFillIdleTime), currentSample = FlowRateSample(time, 0L))
     }
+
+    /**
+     * Renders the aggregate flow rate as a human-readable string value.
+     */
     def show: String = s"mean rate $mean, current per-second count ${currentSample.show}, stats count ${perSecond.vector.entries.size}, full window collected ${perSecond.vector.fullWindowCollected}"
   }
+
+  /**
+   * The companion object to the `AggregateFlowRate` instances, providing a constructor for the initial instance.
+   */
   object AggregateFlowRate {
+    /**
+     * Creates an initial instance, with a [[SlidingAggregateMetrics]] instance constructed using the passed-in [[SampleWindow]], which specifies
+     * the time-range for which to maintain individual request rate statistics.  All other instances are created by instance methods
+     * when the state needs updating.
+     * @param window - a `SampleWindow` which specifies the time-range desired for the `SlidingAggregateMetrics`.
+     * @return initialSlidingFlowRate - the initial instance of the `AggregateFlowRate` data type.
+     */
     def initial(window: SampleWindow): AggregateFlowRate =
       AggregateFlowRate(SlidingAggregateMetrics.initial(window), FlowRateSample(Instant.EPOCH, 0L))
   }
 
+  /**
+   * This data structure consists of the aggregate flow rate statistics (with sliding stats windows) for both the inbound and
+   * the processing rate, along with the [[FlowControlSettings]] used to initial configure them.
+   * @param config - the `FlowControlSettings` containing the configuration used to constrain and inform the inbound and processed
+   *   rate statistics.
+   * @param inboundRate - the [[AggregateFlowRate]] containing the current per-second request inbound rate (count) and the
+   *   time-constrained window (collection) of per-second rates so we can derive statistics on them.
+   * @param processingRate - the [[AggregateFlowRate]] containing the current per-second request processing rate (count) and
+   *   the time-constrained window (collection) of per-second rates so we can derive statistics on them.
+   */
   case class Metrics(config: FlowControlSettings, inboundRate: AggregateFlowRate, processingRate: AggregateFlowRate) {
+
+    /**
+     * The mean/average inbound request rate.
+     */
     val meanInboundRate: MeanFlowRate = MeanFlowRate(inboundRate.mean)
+
+    /**
+     * The mean/average processing request rate.
+     */
     val meanProcessingRate: MeanFlowRate = MeanFlowRate(processingRate.mean)
 
+    /**
+     * The maximum acceptable inbound request rate, if we can calculate one (we must have a full window of
+     * inbound rate samples collected in order to calculate it).  This is calculated by current mean processing
+     * rate + a configurable percentage over the processing rate.
+     */
     val maxAcceptableRate: Option[MeanFlowRate] = if (inboundRate.fullWindowCollected)
       Some(MeanFlowRate(meanProcessingRate.perSecond + (meanProcessingRate.perSecond * config.allowedOverProcessingRate.percent / 100.0))) else None
 
+    /**
+     * This ages both the inbound and processing rate statistics.  This is a lifecycle function invoked by the
+     * associated `CircuitBreaker` prior to determining whether or not to throttle the inbound request (by
+     * throttle, we mean that the request will be failed fast rather than executed and that request therefore
+     * not counted in the inbound rate, thus bringing the effect rate down).
+     * @param startTime - the `java.time.Instant` timestamp that represents the time a request was received
+     *   (used as its start time).
+     * @return newMetrics - a new instance of this data type with the state possibly updated (if the sample
+     *   rates were aged).
+     */
     def beforeThrottle(startTime: Instant): Metrics =
       copy(inboundRate = inboundRate.ageSample(startTime), processingRate = processingRate.ageSample(startTime))
+
+    /**
+     * This increments the current sample's inbound request count.
+     * This is a lifecycle function invoked by the associated `CircuitBreaker` after determining we do not need
+     * to throttle the request but before we execute it.
+     * @return newMetrics - a new instance of this data type with the inbound rate incremented by 1.
+     */
     def beforeExecution: Metrics = copy(inboundRate = inboundRate.addToSample)
+
+    /**
+     * This increments the current sample's processing request count.
+     * This is a lifecycle function invoked by the associated `CircuitBreaker` after we have executed
+     * the request and it has completed.
+     * @return newMetrics - a new instance of this data type with the processing rate incremented by 1.
+     */
     def afterExecution: Metrics = copy(processingRate = processingRate.addToSample)
 
+    /**
+     * Renders the aggregate flow rate as a human-readable string value.
+     */
     def show: String = s"inbound: [ ${inboundRate.show} ], processed: [ ${processingRate.show} ]"
   }
+
+  /**
+   * Creates an initial instance of the `FlowControlStatistics` with the passed-in identifier and configuration.
+   * All other instances are created by instance methods when the state needs updating.
+   * @param id - the [[CircuitBreaker#Identifier]] of the associated [[CircuitBreaker]] instance, binding the
+   *   two together.
+   * @param config - the [[FlowControlSettings]] of the associated `CircuitBreaker`, used to configure the statistics
+   *   as appropriate.
+   * @return initialFlowControlSettings - the initial instance for this data type.
+   */
   def initial(id: CircuitBreaker.Identifier, config: FlowControlSettings): FlowControlStatistics = FlowControlStatistics(
     id,
     Metrics(config, AggregateFlowRate.initial(config.sampleWindow), AggregateFlowRate.initial(config.sampleWindow)),

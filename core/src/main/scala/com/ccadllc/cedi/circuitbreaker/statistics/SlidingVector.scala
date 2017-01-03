@@ -27,9 +27,12 @@ import java.time.Instant
  *   collection should maintain statistics. For instance, a sample window of "five
  *   minutes" would indicate that the `entries` `Vector` contains items with a
  *   time stamp no more than five minutes in the past.
+ * @param fullWindowCollected - a flag indicating whether or not at least one full pass equal to the time
+ *   period has been collected in the underlying vector (used to determine whether there is enough data
+ *   to derive statistics from it).
  * @param entries - the `scala.collection.immutable.Vector` of `SlidingVector.TimeStamped[A]`
  *   items (the `TimeStamped` data type associates a `java.time.Instant` with a simple statistic
- *   item, such as `Boolean` or `Long`, for example).
+ *   item `A`, such as `Boolean` or `Long`, for example).
  */
 case class SlidingVector[A](
     window: SampleWindow,
@@ -43,11 +46,11 @@ case class SlidingVector[A](
   def reset: SlidingVector[A] = copy(fullWindowCollected = false, entries = Vector.empty)
 
   /**
-   * Adds an item value to the vector with an associated timestamp.  The sliding window
+   * Adds a value to the vector with an associated timestamp.  The sliding window
    * of the vector is re-evaluated to remove oldest items no longer in the time window.
-   * @param timestamp - the timestamp associated with the item.
-   * @param value - the item itself.
-   * @return newSlidingVector - a new copy of the vector.
+   * @param timestamp - the `java.time.Instant` timestamp associated with the value.
+   * @param value - the unconstrained value `A` to be associated with the timestamp.
+   * @return newSlidingVector - a new copy of the sliding vector.
    */
   def add(timestamp: Instant, value: A): SlidingVector[A] = {
     val earliest = timestamp.minusMillis(window.duration.toMillis)
@@ -66,7 +69,7 @@ object SlidingVector {
   /**
    * A simple data type which associates a date/time stamp with a value.
    * @param time - a `java.time.Instant` representing a timestamp
-   * @param value - an unconstrained value to be associated with the timestamp.
+   * @param value - an unconstrained value `A` to be associated with the timestamp.
    */
   case class TimeStamped[A](time: Instant, value: A)
 }

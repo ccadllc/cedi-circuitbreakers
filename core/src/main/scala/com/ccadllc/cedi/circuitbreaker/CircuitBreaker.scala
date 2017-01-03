@@ -48,13 +48,16 @@ import CircuitBreaker._
  *
  * @param id - the unique identifier for this circuit breaker.  This is used to look up the
  *   `CircuitBreaker` instance from the registry (or, if not present, to create a new instance).
+ * @param F - an instance of `fs2.util.Async[F]` in implicit scope.
+ * @tparam F - the type of effectful program.
  */
 sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async[F]) {
 
   /**
    * Provides protection over the provided effectful program based on the configuration
    * of `this` instance.
-   * @param program - the effectful program represented by `F[A]`
+   * @param program - the effectful program represented by `F[A]`.
+   * @tparam A - the result type of the effectful program.
    * @return program - an enhanced version of the passed-in program, wrapped in a protective
    *   layer that will fail fast when a threshold of failures have been observed for the
    *   underlying service and may also throttle requests when the observed inbound rate exceeds
@@ -96,8 +99,9 @@ sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async
  */
 object CircuitBreaker {
   /**
-   * An Algebriac Data Type (ADT) representing the exceptions which may be returned by a protected program to indicate that the
-   * `CircuitBreaker` itself is failing the request prior to underlying program invocation.
+   * An Algebriac Data Type (ADT) representing the exceptions which may be returned by a protected
+   * program to indicate that the `CircuitBreaker` itself is failing the request prior to underlying
+   * program invocation.
    * @param id - identifies the `CircuitBreaker` which triggered this error.
    * @param message - A descriptive message related to the error.
    */
@@ -185,7 +189,7 @@ object CircuitBreaker {
    * errors, and it is often not desirable to count these as failures a circuit breaker should keep track of (they
    * may have no bearing on errors which could cause cascading failures).
    * Different subsystems may look for different error or exception hierarchies in this determination (e.g., a
-   * circuit breaker protecting a database access program may provide an evaluator on creation that looks for
+   * circuit breaker protecting a database access program may provide an evaluator that looks for
    * exceptions related to the API used to access the database).
    * @param tripsCircuitBreaker - a predicate function that is passed a `Throwable` and determines whether or not
    *   that exception is be of a type which can, in aggregate, trip the circuit breaker.
@@ -252,18 +256,20 @@ object CircuitBreaker {
   }
 
   /**
-   * Smart constructor, normally not called directly but rather by the [[CircuitBreakerRegistry]] to create a `CircuitBreaker` instance
-   * which protects against cascading failure.
+   * Smart constructor, normally not called directly but rather by the [[CircuitBreakerRegistry]] to create
+   * a `CircuitBreaker` instance which protects against cascading failure.
    * @param id - uniquely identifies a `CircuitBreaker` instance within the [[CircuitBreakerRegistry]].
    * @param config - the [[FailureSettings]] configuration for the `CircuitBreaker`.
-   * @param evaluator - the [[FailureEvaluator]] to use for the `CircuitBreaker`, used to determine what program errors should be
-   *   used to determine state changes.
-   * @param publishEvent - the function to call in order to publish an event - the [[CircuitBreakerRegistry]], for instance,
-   *   provides a function which takes the event and returns an effectful program that when run will publish to an `fs2.Stream`
-   *   which interested clients can subscribe to.
-   * @param statistics - a `StateRef[F, FailureStatistics]` which provides a thread-safe atomic reference to an instance of [[statistics.FailureStatistics]],
-   *   which can then be used as the 'state' for the `CircuitBreaker` instance.  See [[StateRef]] for details.
-   * @return circuitBreaker - an effectful program that when run will return an instance of a failure `CircuitBreaker`.
+   * @param evaluator - the [[FailureEvaluator]] to use for the `CircuitBreaker`, used to determine what
+   *   program errors should be used to determine state changes.
+   * @param publishEvent - the function to call in order to publish an event - the [[CircuitBreakerRegistry]],
+   *   for instance, provides a function which takes the event and returns an effectful program that when run
+   *   will publish to an `fs2.Stream` which interested clients can subscribe to.
+   * @param statistics - a `StateRef[F, FailureStatistics]` which provides a thread-safe atomic reference to
+   *   an instance of [[statistics.FailureStatistics]], which can then be used as the 'state' for the
+   *   `CircuitBreaker` instance.  See [[StateRef]] for details.
+   * @return circuitBreaker - an effectful program that when run will return an instance of a failure
+   *   `CircuitBreaker`.
    */
   def forFailure[F[_]](
     id: Identifier,
@@ -330,18 +336,20 @@ object CircuitBreaker {
   }
 
   /**
-   * Smart constructor, normally not called directly but rather by the [[CircuitBreakerRegistry]] to create a `CircuitBreaker` instance
-   * which protects against both cascading failure and system overload.
+   * Smart constructor, normally not called directly but rather by the [[CircuitBreakerRegistry]] to create a
+   * `CircuitBreaker` instance which protects against both cascading failure and system overload.
    * @param id - uniquely identifies a `CircuitBreaker` instance within the [[CircuitBreakerRegistry]].
    * @param config - the [[FlowControlSettings]] configuration for the `CircuitBreaker`.
-   * @param evaluator - the [[FailureEvaluator]] to use for the `CircuitBreaker`, used to determine what program errors should be
-   *   used to determine state changes.
-   * @param publishEvent - the function to call in order to publish an event - the [[CircuitBreakerRegistry]], for instance,
-   *   provides a function which takes the event and returns an effectful program that when run will publish to an `fs2.Stream`
-   *   which interested clients can subscribe to.
-   * @param statistics - a `StateRef[F, FlowControlStatistics]` which provides a thread-safe atomic reference to an instance of
-   *   [[statistics.FlowControlStatistics]], which can then be used as the 'state' for the `CircuitBreaker` instance.  See [[StateRef]] for details.
-   * @return circuitBreaker - an effectful program that when run will return an instance of a flow control `CircuitBreaker`.
+   * @param evaluator - the [[FailureEvaluator]] to use for the `CircuitBreaker`, used to determine what program
+   *   errors should be used to determine state changes.
+   * @param publishEvent - the function to call in order to publish an event - the [[CircuitBreakerRegistry]],
+   *   for instance, provides a function which takes the event and returns an effectful program that when run
+   *   will publish to an `fs2.Stream` which interested clients can subscribe to.
+   * @param statistics - a `StateRef[F, FlowControlStatistics]` which provides a thread-safe atomic reference
+   *   to an instance of [[statistics.FlowControlStatistics]], which can then be used as the 'state' for the
+   *   `CircuitBreaker` instance.  See [[StateRef]] for details.
+   * @return circuitBreaker - an effectful program that when run will return an instance of a flow control
+   *   `CircuitBreaker`.
    */
   def forFlowControl[F[_]](
     id: Identifier,

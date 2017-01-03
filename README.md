@@ -10,13 +10,13 @@ Quick links:
 
 ### <a id="about"></a>About the library
 
-The term `Circuit breaker` in software engineering applies to a programming pattern meant to provide a similar service for software components that its namesake provides for electrical grids: ensuring that a failure or overload does not cascade to bring down the whole system.  Advanced circuit breakers such as the ones provided by this library also enable the means for throttling (degrading or limiting) the component usage when a service cannot keep up with inbound requests.  Finally, this library additionally provides the means by which clients - for example, a monitoring task - can subscribe to 1.) events related to the circuit breaker activity (e.g., alert users when a circuit breaker has opened, closed, or is throttling requests due to excessive inbound traffic); or 2.) a stream of statistics related to the circuitbreaker emitted on a periodic basis.
+The term `Circuit breaker` in software engineering applies to a programming pattern meant to provide a similar service for software components that its namesake provides for electrical grids: ensuring that a failure or overload does not cascade to bring down the whole system.  Advanced circuit breakers such as the ones provided by this library also enable the means for throttling (degrading or limiting) the component usage when a service cannot keep up with inbound requests.  Finally, this library additionally provides the means by which clients - for example, a monitoring task - can subscribe to 1.) events related to the circuit breaker activity (e.g., alert users when a circuit breaker has opened, closed, or is throttling requests due to excessive inbound traffic); and/or 2.) a stream of statistics related to the circuitbreaker emitted on a periodic basis.
 
 ### <a id="usage"></a>Examples of use
 
 #### <a id="protectusage"></a> Circuitbreaker Protection
 
-Here is a simple example of the use of a circuit breaker to protect against cascading failures. Aside from its configuration - described later in this README - use of the flow control circuit breaker is identical.
+Here is a simple example of the use of a circuit breaker to protect against cascading failures. Aside from its configuration - described later in this README - the syntax and semantics in the use of the flow control circuit breaker is identical.
 
 ```scala
 import fs2.{ Scheduler, Strategy, Task }
@@ -42,20 +42,21 @@ implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(
 /*
  * The circuit breaker registry settings are fairly simple and only consist
  * of how often it should evaluate any of the circuitbreakers and remove those
- * that have had no activity for a given time period.  If the checkInterval evaluates
- * to 0 (0.seconds for examples), no circuit breaker garbage collection will occur.
+ * that have had no activity for a given time period.  If the checkInterval
+ * property evaluates to 0 (0.seconds for example), no circuit breaker garbage
+ * collection will occur.
  */
 val circuitBreakerRegistrySettings: RegistrySettings = RegistrySettings(
   garbageCollection = RegistrySettings.GarbageCollection(checkInterval = 1.hour, inactivityCutoff = 24.hours)
 )
 
 /*
- * The configuration of the circuitbreaker we shall create as part of this example.
- * It consists of the sliding sample window of statistics to gather, the percentage failures
- * over that sample window timeframe which will cause the circuitbreaker to open and to fail fast
- * subsequent requests, the interval at which a request should be let through to test when the
- * circuitbreaker has opened, and the number of consecutive test requests which must succeed
- * to close it.
+ * This constitutes the configuration of the circuitbreaker we shall create as part of this example.
+ * It consists of the constraints that define sliding sample window of statistics to gather,
+ * the percentage failures over that sample window timeframe which will trigger the circuitbreaker
+ * to open and to fail fast subsequent requests, the interval at which a request should be let
+ * through to test when the circuitbreaker has opened, and the number of consecutive test requests
+ * which must succeed to close it.
  */
 val databaseCircuitBreakerSettings: FailureSettings = FailureSettings(
   sampleWindow = SampleWindow(duration = 2.minutes),
@@ -77,14 +78,16 @@ def retrieveQuarterlyProductSales: Task[Vector[QuarterlyProductSales]] =
 class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSettings: FailureSettings) {
   /*
    * The dynamodb client circuit breaker is identified in the registry via the
-   * `CircuitBreaker.Identifier`
+   * `CircuitBreaker.Identifier`.
    */
   final val DynamoDbCircuitBreakerId: CircuitBreaker.Identifier = CircuitBreaker.Identifier("dynamodb-client")
   /*
    * The dynamodb client circuit breaker will evaluate task failures using
    * this to determine if the failure should be considered in determining
-   * whether a circuit breaker be opened (for example, application level failures
-   * typically should not be considered).
+   * whether a circuit breaker be opened. For example, application level failures
+   * typically should not be considered, since that category of failure generally
+   * does not indicate systemic problems of the kind a circuit breaker was designed
+   * to protect against.
    */
   final val DynamoDbCircuitBreakerEvaluator: CircuitBreaker.FailureEvaluator = CircuitBreaker.FailureEvaluator {
     case _: IOException | _: TimeoutException => true
@@ -103,9 +106,9 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSe
      * a test is not yet ready to be run, the task itself will not be executed but
      * will 'fail fast' with a `CircuitBreaker.OpenException`; Similarly, with a flow control
      * circuit breaker, if the rate per second is too high, requests will 'fail fast' with a
-     * 'CircuitBreaker.ThrottledException' (and not be counted in the inbound rate stats)
-     * until the inbound rate has been brought down to a level the processing rate indicates
-     * can be handled.
+     * 'CircuitBreaker.ThrottledException' - and thus not be counted in the inbound rate stats -
+     * until the inbound rate has been brought down to a level the processing rate statistics
+     * indicates can be handled.
      */
     result <- cb.protect(retrieveQuarterlyProductSales)
   } yield result
@@ -206,7 +209,7 @@ com.ccadllc.cedi.circuitbreaker {
 
 The cascading failure circuit breaker has a number of configurable parameters, each of
 which is described below.  The circuit breaker settings are typically defined inline subordinate
-to the subsystem that use them in the application configuration.  For example, for a DynamoDb
+to the subsystem that uses them in the application configuration.  For example, for a DynamoDb
 client circuit breaker in a `persistence` library, they would
 be nested in the `dynamodb {  }` settings in the `persistence` reference.conf
 file.
@@ -265,7 +268,7 @@ failure-circuitbreaker {
 
 #### <a id="flowcontrolconfiguration"></a> Flow Control Circuit Breaker ###
 
-The flow control circuit breaker has a number of configurable parameters, each of which is described below.  The circuit breaker settings are typically defined subordinate to the subsystem that use them in the application configuration.  For example, for a circuit breaker protecting an http client in a `service` microservice, they would be nested in the `http-client {  }` settings in the `service` reference.conf file.  See the [typesafe documentation](https://github.com/typesafehub/config) for more details on the general usage of this type of configuration.
+The flow control circuit breaker has a number of configurable parameters, each of which is described below.  The circuit breaker settings are typically defined subordinate to the subsystem that uses them in the application configuration.  For example, for a circuit breaker protecting an http client in a `service` microservice, they would be nested in the `http-client {  }` settings in the `service` reference.conf file.  See the [typesafe documentation](https://github.com/typesafehub/config) for more details on the general usage of this type of configuration.
 
 ```
 flow-control-circuitbreaker {
