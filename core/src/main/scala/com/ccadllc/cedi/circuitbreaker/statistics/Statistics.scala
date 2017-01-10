@@ -88,14 +88,14 @@ case class FailureStatistics private (
     case Some(testing) =>
       val updatedTesting = testing.update(timestamp, success)
       if (updatedTesting.successes >= config.test.minimumSuccesses)
-        copy(testing = None, change = Some(Change.Closed), lastActivity = timestamp)
+        copy(metrics = metrics.reset, testing = None, change = Some(Change.Closed), lastActivity = timestamp)
       else
         copy(testing = Some(updatedTesting), change = None, lastActivity = timestamp)
     case None =>
       val effectiveMetrics = metrics.addToWindow(timestamp, success)
       val tripsBreaker = effectiveMetrics.percentFailure greaterThan config.degradationThreshold
       if (tripsBreaker) copy(
-        metrics = effectiveMetrics.reset,
+        metrics = effectiveMetrics,
         testing = Some(Testing(config.test)),
         change = Some(Change.Opened),
         lastActivity = timestamp
@@ -586,7 +586,7 @@ object FlowControlStatistics {
      * inbound rate samples collected in order to calculate it).  This is calculated by current mean processing
      * rate + a configurable percentage over the processing rate.
      */
-    val maxAcceptableRate: Option[MeanFlowRate] = if (inboundRate.fullWindowCollected)
+    val maxAcceptableRate: Option[MeanFlowRate] = if (inboundRate.fullWindowCollected && meanProcessingRate.perSecond > 0)
       Some(MeanFlowRate(meanProcessingRate.perSecond + (meanProcessingRate.perSecond * config.allowedOverProcessingRate.percent / 100.0))) else None
 
     /**
