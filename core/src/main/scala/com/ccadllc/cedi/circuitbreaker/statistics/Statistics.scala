@@ -20,7 +20,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 /**
- * An Algebriac Data Type (ADT) representing statistics associated with a [[CircuitBreaker]]
+ * An Algebraic Data Type (ADT) representing statistics associated with a [[CircuitBreaker]]
  * instance which can be rendered as a `String` for use in monitoring applications.
  */
 sealed abstract class Statistics extends Product with Serializable {
@@ -115,10 +115,10 @@ case class FailureStatistics private (
  */
 object FailureStatistics {
   /**
-   * An Alegraic Data Type (ADT) which represents the latest state change for a `FailureStatistics` instance.
+   * An Algebraic Data Type (ADT) which represents the latest state change for a `FailureStatistics` instance.
    * If the `changed` property of the `FailureStatististics` instance is set to Some(`Opened`), it indicates the
    * associated `CircuitBreaker` has just transitioned to open, if set to Some(`Closed`), it indicates it has just
-   * tranisitioned to closed, and if set to None, it indicates that the `CircuitBreaker` was already opened or
+   * transitioned to closed, and if set to None, it indicates that the `CircuitBreaker` was already opened or
    * closed prior to the latest statistics update.
    */
   sealed abstract class Change extends Product with Serializable {
@@ -149,7 +149,7 @@ object FailureStatistics {
    * The sliding statistics, which maintains a pass/failure boolean indicator for results of the
    * execution of programs protected by the associated [[CircuitBreaker]].  Each pass/failure indicator
    * is associated with a `java.time.Instant` timestamp in the [[SlidingVector]] contained here and the
-   * sliding vector keeps only the items with associated timestamps in the configured range of the statistics
+   * sliding vector keeps only the items with associated time-stamps in the configured range of the statistics
    * window (specified when the `SlidingVector[Boolean]` is created).
    * @param vector - the `SlidingVector[Boolean]` containing the pass/fail indicators for the latest
    *   protected program executions which fall within the configured time range of the statistics window (e.g.,
@@ -303,7 +303,7 @@ case class FlowControlStatistics private (
   def meanProcessingRate: MeanFlowRate = metrics.meanProcessingRate
 
   /**
-   * The maximum acceptable inbound rate.  This is differentated from the mean processing rate in that you can configure
+   * The maximum acceptable inbound rate.  This is differentiated from the mean processing rate in that you can configure
    * a percentage that we should allow the inbound rate exceed the processing rate (to account for spikes and valleys, for instance).
    * This value is the mean processing rate + the added percentage over allowed, if it is configured as a non-zero value.
    * @return maxAcceptableRate - the maximum acceptable rate, if it has been calculated yet (it will not be calculated until
@@ -312,7 +312,7 @@ case class FlowControlStatistics private (
   def maxAcceptableRate: Option[MeanFlowRate] = metrics.maxAcceptableRate
 
   /**
-   * Should the current request be throttled (failed fast), given this statistics object? This function will evaluat
+   * Should the current request be throttled (failed fast), given this statistics object? This function will evaluate
    * the inbound rate and processing rate averages, assuming both have followed a full window's worth of statistics, and
    * determine if the current effective inbound rate is greater than the maximum acceptable rate, or if the configured hard
    * limit rate has been exceeded.  If either of those things evaluate true, this function will also.
@@ -393,7 +393,7 @@ case class FlowControlStatistics private (
  */
 object FlowControlStatistics {
   /**
-   * An Alegraic Data Type (ADT) which represents the latest state change for a `FlowControlStatistics` instance.
+   * An Algebraic Data Type (ADT) which represents the latest state change for a `FlowControlStatistics` instance.
    * If the `changed` property of the `FlowControlStatististics` instance is set to Some(`ThrottledUp`), it indicates the
    * associated `CircuitBreaker` can allow / has just allowed more requests to execute per second (the maximum acceptable
    * rate has increased), if set to Some(`ThrottledDown`), it indicates it must allow / has just allowed fewer requests to
@@ -430,7 +430,7 @@ object FlowControlStatistics {
    * `CircuitBreaker`, there are two instances of this data type, one where the rate represents the number of inbound
    * requests per second and one where the rate represents the number of processed requests per second.  Each one-second
    * sample rate is associated with a `java.time.Instant` timestamp in the [[SlidingVector]] contained here and the
-   * sliding vector keeps only the items with associated timestamps in the configured range of the statistics
+   * sliding vector keeps only the items with associated time-stamps in the configured range of the statistics
    * window (specified when the `SlidingVector[Boolean]` is created).
    * @param vector - the `SlidingVector[Long]` containing the request rate per second for the latest
    *   protected program executions which fall within the configured time range of the statistics window (e.g.,
@@ -445,8 +445,8 @@ object FlowControlStatistics {
      * Add the per-second rate value to the `SlidingVector[Long]`, associated with the passed-in `java.time.Instant` timestamp. If
      * there has been more than one second of idle time (more than one second since the last time `addToWindow` was called), pass in
      * the number of 0 per-second sample values to first add to the sliding vector to represent that idle time, providing them with
-     * associated timestamps increasingly in the past by one second intervals as appropriate.  The sliding vector is truncated if necessary
-     * to remove any values with timestamps older than the time-range of the sample window as configured when this data type is initially
+     * associated time-stamps increasingly in the past by one second intervals as appropriate.  The sliding vector is truncated if necessary
+     * to remove any values with time-stamps older than the time-range of the sample window as configured when this data type is initially
      * constructed.
      * @param timestamp - the `java.time.Instant` timestamp, indicating the time at the end of the second for which the `value` parameter
      *   represents the per-second request rate.
@@ -525,7 +525,7 @@ object FlowControlStatistics {
 
     /**
      * Possibly age the current per-second sample, if more than one second has passed since the current per-second sample count started,
-     * by copying the count into the aggregate sliding window and resetting the current sample count to 0 and its start timeto the passed-in
+     * by copying the count into the aggregate sliding window and resetting the current sample count to 0 and its start time to the passed-in
      * `time` parameter.  The aggregate sliding window of stats is first filled with zero count samples for the number of seconds over 2
      * which have occurred since the last time this function was invoked.
      * @param time - the `java.time.Instant` timestamp representing the current time, usually (or at least the relative current time;

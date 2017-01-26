@@ -187,7 +187,7 @@ trait TestSupport extends WordSpecLike with Matchers {
   /**
    * Executes tasks protected with a flow control circuit breaker in concurrent groups
    * with varying lengths of task execution and pauses between group executions.
-   * This is all to cause the overall number of concurrent execution attempts (the simulatored
+   * This is all to cause the overall number of concurrent execution attempts (the simulated
    * inbound requests) to be either greater or less than the tasks' ability to keep up based
    * on their execution lengths.  Flow control related tests execute this method with different
    * input parameters to ensure throttle up and/or throttle down events and associated throttle

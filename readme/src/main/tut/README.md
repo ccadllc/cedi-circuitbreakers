@@ -41,7 +41,7 @@ implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(
 
 /*
  * The circuit breaker registry settings are fairly simple and only consist
- * of how often it should evaluate any of the circuitbreakers and remove those
+ * of how often it should evaluate any of the circuit breakers and remove those
  * that have had no activity for a given time period.  If the checkInterval
  * property evaluates to 0 (0.seconds for example), no circuit breaker garbage
  * collection will occur.
@@ -53,7 +53,7 @@ val circuitBreakerRegistrySettings: RegistrySettings = RegistrySettings(
 /*
  * This constitutes the configuration of the circuitbreaker we shall create as part of this example.
  * It consists of the constraints that define sliding sample window of statistics to gather,
- * the percentage failures over that sample window timeframe which will trigger the circuitbreaker
+ * the percentage failures over that sample window time-frame which will trigger the circuitbreaker
  * to open and to fail fast subsequent requests, the interval at which a request should be let
  * through to test when the circuitbreaker has opened, and the number of consecutive test requests
  * which must succeed to close it.
@@ -143,7 +143,7 @@ import com.ccadllc.cedi.circuitbreaker.{ CircuitBreakerRegistry, CircuitBreaker 
 import com.ccadllc.cedi.circuitbreaker.statistics.{ FailureStatistics, FlowControlStatistics }
 
 /**
- * In this method, we subscribe to a stream of circuit breaker events trigged on
+ * In this method, we subscribe to a stream of circuit breaker events triggered on
  * state changes and process them in some manner (that manner is not shown here).
  */
 def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[Task]): Task[Unit] = {

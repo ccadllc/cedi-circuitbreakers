@@ -99,7 +99,7 @@ sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async
  */
 object CircuitBreaker {
   /**
-   * An Algebriac Data Type (ADT) representing the exceptions which may be returned by a protected
+   * An Algebraic Data Type (ADT) representing the exceptions which may be returned by a protected
    * program to indicate that the `CircuitBreaker` itself is failing the request prior to underlying
    * program invocation.
    * @param id - identifies the `CircuitBreaker` which triggered this error.
@@ -133,7 +133,7 @@ object CircuitBreaker {
   object ThrottledException {
     private def deriveMessage(stats: FlowControlStatistics) = {
       val reason = stats.metrics.inboundRate.currentSample.perSecondCount > stats.metrics.config.perSecondRateHardLimit match {
-        case true => s"current requests per second (${stats.metrics.inboundRate.currentSample.perSecondCount} exceeding configured hard limit of ${stats.metrics.config.perSecondRateHardLimit}"
+        case true => s"current requests per second (${stats.metrics.inboundRate.currentSample.perSecondCount} exceeding configured hard limit of ${stats.metrics.config.perSecondRateHardLimit})"
         case false => stats.maxAcceptableRate.fold(throw new IllegalStateException(s"Throttling without any acceptable max rate for ${stats.id}!")) { mar =>
           s"allowable rate of ${mar.show} exceeding effective inbound rate of ${stats.meanInboundRate.show}"
         }
@@ -143,7 +143,7 @@ object CircuitBreaker {
   }
 
   /**
-   * An Algebriac Data Type (ADT) representing the events which may be published to the `fs2.Stream` by the `CircuitBreaker`
+   * An Algebraic Data Type (ADT) representing the events which may be published to the `fs2.Stream` by the `CircuitBreaker`
    * whenever there is a state change (a `CircuitBreaker` opening or closing, or a `CircuitBreaker` throttling a request, or
    * increasing/decreasing the rate at which a request is throttled).
    * @param id - identifies the `CircuitBreaker` which triggered this error.
