@@ -41,7 +41,7 @@ package object circuitbreaker {
        * there is an instance of `fs2.util.Async[F]` in implicit scope.  See [[CircuitBreaker#protect]]
        * for details.
        * @param cb - the [[CircuitBreaker]] instance which will protect this `F[A]`.
-       * @param F - the `fs2.util.Async[F]` in implicit scope which provides the contructs
+       * @param F - the `fs2.util.Async[F]` in implicit scope which provides the constructs
        *   under which `F[A]` executes.
        * @return enhancedProgram - the protected effectful program.
        */

@@ -10,11 +10,11 @@ Quick links:
 
 ### <a id="about"></a>About the library
 
-The term `Circuit breaker` in software engineering applies to a programming pattern meant to provide a similar service for software components that its namesake provides for electrical grids: ensuring that a failure or overload does not cascade to bring down the whole system.  Advanced circuit breakers such as the ones provided by this library also enable the means for throttling (degrading or limiting) the component usage when a service cannot keep up with inbound requests.  Finally, this library additionally provides the means by which clients - for example, a monitoring task - can subscribe to 1.) events related to the circuit breaker activity (e.g., alert users when a circuit breaker has opened, closed, or is throttling requests due to excessive inbound traffic); and/or 2.) a stream of statistics related to the circuitbreaker emitted on a periodic basis.
+The term `Circuit breaker` in software engineering applies to a programming pattern meant to provide a similar service for software components that its namesake provides for electrical grids: ensuring that a failure or overload does not cascade to bring down the whole system.  Advanced circuit breakers such as the ones provided by this library also enable the means for throttling (degrading or limiting) the component usage when a service cannot keep up with inbound requests.  Finally, this library additionally provides the means by which clients - for example, a monitoring task - can subscribe to 1.) events related to the circuit breaker activity (e.g., alert users when a circuit breaker has opened, closed, or is throttling requests due to excessive inbound traffic); and/or 2.) a stream of statistics related to the circuit breaker emitted on a periodic basis.
 
 ### <a id="usage"></a>Examples of use
 
-#### <a id="protectusage"></a> Circuitbreaker Protection
+#### <a id="protectusage"></a> Circuit breaker Protection
 
 Here is a simple example of the use of a circuit breaker to protect against cascading failures. Aside from its configuration - described later in this README - the syntax and semantics in the use of the flow control circuit breaker is identical.
 
@@ -41,7 +41,7 @@ implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(
 
 /*
  * The circuit breaker registry settings are fairly simple and only consist
- * of how often it should evaluate any of the circuitbreakers and remove those
+ * of how often it should evaluate any of the circuit breakers and remove those
  * that have had no activity for a given time period.  If the checkInterval
  * property evaluates to 0 (0.seconds for example), no circuit breaker garbage
  * collection will occur.
@@ -53,7 +53,7 @@ val circuitBreakerRegistrySettings: RegistrySettings = RegistrySettings(
 /*
  * This constitutes the configuration of the circuitbreaker we shall create as part of this example.
  * It consists of the constraints that define sliding sample window of statistics to gather,
- * the percentage failures over that sample window timeframe which will trigger the circuitbreaker
+ * the percentage failures over that sample window time-frame which will trigger the circuitbreaker
  * to open and to fail fast subsequent requests, the interval at which a request should be let
  * through to test when the circuitbreaker has opened, and the number of consecutive test requests
  * which must succeed to close it.
@@ -143,7 +143,7 @@ import com.ccadllc.cedi.circuitbreaker.{ CircuitBreakerRegistry, CircuitBreaker 
 import com.ccadllc.cedi.circuitbreaker.statistics.{ FailureStatistics, FlowControlStatistics }
 
 /**
- * In this method, we subscribe to a stream of circuit breaker events trigged on
+ * In this method, we subscribe to a stream of circuit breaker events triggered on
  * state changes and process them in some manner (that manner is not shown here).
  */
 def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[Task]): Task[Unit] = {
@@ -225,7 +225,7 @@ failure-circuitbreaker {
   # first two minutes or 50,000 requests collected in this example).
   # Thereafter, the window continues to slide over the latest two
   # minutes of requests.
-  # The maximum-entries entry is meant as a failsafe to ensure that
+  # The maximum-entries entry is meant as a fail-safe to ensure that
   # we hold no more than this number at any one time, to avoid
   # excessive memory consumption.
   sample-window {

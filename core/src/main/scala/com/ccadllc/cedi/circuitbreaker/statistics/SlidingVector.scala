@@ -40,7 +40,7 @@ case class SlidingVector[A](
     entries: Vector[SlidingVector.TimeStamped[A]] = Vector.empty
 ) {
   /**
-   * Resets the vector of itmes to zero, returning a new copy.
+   * Resets the vector of items to zero, returning a new copy.
    * @return newSlidingVector - a new copy of the vector.
    */
   def reset: SlidingVector[A] = copy(fullWindowCollected = false, entries = Vector.empty)

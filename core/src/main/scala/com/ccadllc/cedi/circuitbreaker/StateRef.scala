@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicReference
 import scala.language.higherKinds
 
 /*
- * Provides lock-free atomic retrieval and update capabilities for an unconstained (presumably immutable)
+ * Provides lock-free atomic retrieval and update capabilities for an unconstrained immutable
  * data type.  Used by this library to maintain state in the [[CircuitBreaker]] instances and the [[CircuitBreakerRegistry]].
  */
 private[circuitbreaker] final class StateRef[F[_], A] private (ref: AtomicReference[A])(implicit F: Async[F]) {

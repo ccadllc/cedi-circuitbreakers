@@ -84,7 +84,7 @@ object Percentage {
 
 /**
  * Represents a window of time, defined by the `duration` property and
- * used to constrain the number of timestamped sample items retained in order
+ * used to constrain the number of time-stamped sample items retained in order
  * to calculate statistics for deriving [[CircuitBreaker]] state changes.  A
  * hard limit of the number of samples is defined by the `maximumEntries`
  * property.

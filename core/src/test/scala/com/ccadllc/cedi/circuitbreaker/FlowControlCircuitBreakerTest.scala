@@ -34,7 +34,7 @@ class FlowControlCircuitBreakerTest extends WordSpec with TestSupport {
       val maxAcceptableRate = throttledEvents.lastOption.value.stats.maxAcceptableRate.value.perSecond
       val meanInboundRate = throttledEvents.lastOption.value.stats.meanInboundRate.perSecond
       meanInboundRate should be > maxAcceptableRate
-      protectFlowControl(cb, 100.milliseconds, 5.milliseconds, 500.milliseconds)
+      protectFlowControl(cb, 200.milliseconds, 5.milliseconds, 500.milliseconds)
       val throttledDownEvents = tseo.throttledDownEvents(id)
       throttledDownEvents.lastOption.value.stats.maxAcceptableRate.value.perSecond should be < maxAcceptableRate
     }
