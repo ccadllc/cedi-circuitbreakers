@@ -176,7 +176,8 @@ object FailureSettings {
  *   changed (either lower or higher) before a state change event is triggered.  If it is 0, all state changes result
  *   in an event.  This configuration item is meant to alleviate a flood of events when the request traffic pattern
  *   is very choppy (lots of spikes and valleys in a short time period).
- * @param perSecondHardLimit - this is the hard limit of the inbound requests per second above which requests will be
+ * @param perSecondRateMinimum - this is the minimum observed inbound rate at which flow control throttling will kick in.
+ * @param perSecondRateHardLimit - this is the hard limit of the inbound requests per second above which requests will be
  *   throttled by the circuit breaker (failed fast without execution) for the remainder of the current second.  It will
  *   be monitored and acted upon continuously.
  * @param enabled - The flow control portion of the [[CircuitBreaker]] can be enabled or disabled with this parameter.
@@ -186,10 +187,11 @@ case class FlowControlSettings(
     sampleWindow: SampleWindow,
     allowedOverProcessingRate: Percentage,
     minimumReportableRateChange: Percentage,
+    perSecondRateMinimum: Long,
     perSecondRateHardLimit: Long,
     enabled: Boolean = true
 ) {
-  def show: String = s"failure [ {failure.show} ], sample window [ ${sampleWindow.show} ], allowed over processing rate [ ${allowedOverProcessingRate.show} ], minimum reportable rate change [ ${minimumReportableRateChange.show} ], per second rate hard limit [ $perSecondRateHardLimit ], enabled [ $enabled ]"
+  def show: String = s"failure [ {failure.show} ], sample window [ ${sampleWindow.show} ], allowed over processing rate [ ${allowedOverProcessingRate.show} ], minimum reportable rate change [ ${minimumReportableRateChange.show} ], per second rate minimum [ $perSecondRateMinimum ], per second rate hard limit [ $perSecondRateHardLimit ], enabled [ $enabled ]"
 }
 object FlowControlSettings {
   implicit val configParser: ConfigParser[FlowControlSettings] = (
@@ -197,7 +199,8 @@ object FlowControlSettings {
     subconfig("sample-window")(SampleWindow.configParser) ~
     subconfig("allowed-over-processing-rate")(Percentage.configParser) ~
     subconfig("minimum-reportable-rate-change")(Percentage.configParser) ~
+    long("per-second-rate-minimum").withFallbackDefault(1L) ~
     long("per-second-rate-hard-limit") ~
     bool("enabled").withFallbackDefault(true)
-  ) map { case (f, sw, aopr, mrrc, psrhl, e) => FlowControlSettings(f, sw, aopr, mrrc, psrhl, e) }
+  ) map { case (f, sw, aopr, mrrc, psrm, psrhl, e) => FlowControlSettings(f, sw, aopr, mrrc, psrm, psrhl, e) }
 }
