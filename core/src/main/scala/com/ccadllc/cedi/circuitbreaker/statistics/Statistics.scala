@@ -382,9 +382,9 @@ case class FlowControlStatistics private (
     }
   } yield change
 
-  private def indicatesShouldBeThrottled(m: Metrics) = m.maxAcceptableRate.exists { m.meanInboundRate.perSecond > _.perSecond } || (
-    m.config.perSecondRateHardLimit > 0.0 && m.inboundRate.currentSample.perSecondCount > m.config.perSecondRateHardLimit
-  )
+  private def indicatesShouldBeThrottled(m: Metrics) = (
+    m.meanInboundRate.perSecond >= m.config.perSecondRateMinimum && m.maxAcceptableRate.exists { m.meanInboundRate.perSecond > _.perSecond }
+  ) || (m.config.perSecondRateHardLimit > 0L && m.inboundRate.currentSample.perSecondCount > m.config.perSecondRateHardLimit)
 }
 
 /**
