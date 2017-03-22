@@ -135,7 +135,7 @@ object CircuitBreaker {
       val reason = stats.metrics.inboundRate.currentSample.perSecondCount > stats.metrics.config.perSecondRateHardLimit match {
         case true => s"current requests per second (${stats.metrics.inboundRate.currentSample.perSecondCount} exceeding configured hard limit of ${stats.metrics.config.perSecondRateHardLimit})"
         case false => stats.maxAcceptableRate.fold(throw new IllegalStateException(s"Throttling without any acceptable max rate for ${stats.id}!")) { mar =>
-          s"allowable rate of ${mar.show} exceeding effective inbound rate of ${stats.meanInboundRate.show}"
+          s"allowable rate of ${mar.show} is less than effective inbound rate of ${stats.meanInboundRate.show}"
         }
       }
       s"throttled request due to $reason."
