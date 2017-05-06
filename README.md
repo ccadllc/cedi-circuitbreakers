@@ -353,7 +353,7 @@ flow-control-circuitbreaker {
   # service can be handled in a sustained manner but not so high that it will
   # overwhelm the system for the period of time that it takes for the sample window
   # mean values to adjust to the increase in load and provide adaptive protection.
-  per-second-rate-threshold: 25
+  per-second-rate-hard-limit: 25
 }
 ```
 
