@@ -15,10 +15,8 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import fs2.util.Async
-import fs2.util.syntax._
-
-import java.util.function.UnaryOperator
+import cats.effect.Sync
+import cats.implicits._
 
 import java.util.concurrent.atomic.AtomicReference
 
@@ -28,11 +26,11 @@ import scala.language.higherKinds
  * Provides lock-free atomic retrieval and update capabilities for an unconstrained immutable
  * data type.  Used by this library to maintain state in the [[CircuitBreaker]] instances and the [[CircuitBreakerRegistry]].
  */
-private[circuitbreaker] final class StateRef[F[_], A] private (ref: AtomicReference[A])(implicit F: Async[F]) {
+private[circuitbreaker] final class StateRef[F[_], A] private (ref: AtomicReference[A])(implicit F: Sync[F]) {
   /* Retrieve the state */
   def get: F[A] = F.delay(ref.get)
   /* Modify the state with the passed-in function, returning the modified value */
-  def modify(f: A => A): F[A] = F.delay(ref.updateAndGet(new UnaryOperator[A] { def apply(a: A) = f(a) }))
+  def modify(f: A => A): F[A] = F.delay(ref.updateAndGet(a => f(a)))
   /*
    * Retrieve a sub-component `B` of the state `A` with the `retriever` function,
    * creating the component `B` with the `creator` function if it does not exist in `A`
@@ -53,5 +51,5 @@ private[circuitbreaker] final class StateRef[F[_], A] private (ref: AtomicRefere
   }
 }
 private[circuitbreaker] object StateRef {
-  def create[F[_], A](value: => A)(implicit F: Async[F]): F[StateRef[F, A]] = F.delay(new StateRef[F, A](new AtomicReference(value)))
+  def create[F[_], A](value: => A)(implicit F: Sync[F]): F[StateRef[F, A]] = F.delay(new StateRef[F, A](new AtomicReference(value)))
 }

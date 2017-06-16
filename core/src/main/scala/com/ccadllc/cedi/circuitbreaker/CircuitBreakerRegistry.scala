@@ -15,13 +15,15 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
+import cats.effect.{ Effect, Sync }
+import cats.implicits._
+
 import fs2._
 import fs2.async.mutable.{ Signal, Topic }
-import fs2.util.Async
-import fs2.util.syntax._
 
 import java.time.Instant
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 import scala.language.higherKinds
@@ -38,13 +40,13 @@ import statistics.Statistics
  * state change events.  A `CircuitBreakerRegistry` instance is not directly instantiated but rather
  * created via the smart constructor in the companion object.  The effectful program types protected
  * by the [[CircuitBreaker]]s created and maintained with this registry are fixed by an `F` where an
- * instance of `fs2.Async[F]` is provided in implicit scope.
+ * instance of `Effect[F]` is provided in implicit scope.
  */
 final class CircuitBreakerRegistry[F[_]] private (
     state: StateRef[F, State[F]],
     eventTopic: Topic[F, Option[CircuitBreakerEvent]],
     shutdownTrigger: ShutdownTrigger[F]
-)(implicit strategy: Strategy, scheduler: Scheduler, F: Async[F]) {
+)(implicit ec: ExecutionContext, scheduler: Scheduler, F: Effect[F]) {
 
   /**
    * Creates an `fs2.Stream` of [[CircuitBreaker#CircuitBreakerEvent]]s by subscribing to the event `fs2.async.mutable.Topic` maintained
@@ -66,7 +68,7 @@ final class CircuitBreakerRegistry[F[_]] private (
       cbs <- circuitBreakers
       stats <- cbs.values.toVector.traverse { _.currentStatistics }
     } yield stats
-    time.awakeEvery[F](retrievalInterval).evalMap { _ => retrieveStatistics }.flatMap { Stream.emits }.interruptWhen(shutdownTrigger.signal)
+    time.awakeEvery[F](retrievalInterval).evalMap { _ => retrieveStatistics }.flatMap(Stream.emits(_)).interruptWhen(shutdownTrigger.signal)
   }
 
   /**
@@ -138,17 +140,17 @@ final class CircuitBreakerRegistry[F[_]] private (
  * internally by the registry.
  */
 object CircuitBreakerRegistry {
-  private class ShutdownTrigger[F[_]: Async](val signal: Signal[F, Boolean]) {
+  private class ShutdownTrigger[F[_]](val signal: Signal[F, Boolean]) {
     def execute: F[Unit] = signal.set(true)
   }
-  private case class State[F[_]: Async](circuitBreakers: Map[Identifier, CircuitBreaker[F]]) {
+  private case class State[F[_]](circuitBreakers: Map[Identifier, CircuitBreaker[F]]) {
     def removeCircuitBreaker(id: Identifier): State[F] = copy(circuitBreakers = circuitBreakers - id)
     def addCircuitBreaker(cb: CircuitBreaker[F]): State[F] = copy(circuitBreakers = circuitBreakers + (cb.id -> cb))
     def shutdown: State[F] = State.empty[F]
   }
   private object State {
-    def empty[F[_]: Async]: State[F] = State[F](Map.empty)
-    def circuitBreaker[F[_]: Async](
+    def empty[F[_]]: State[F] = State[F](Map.empty)
+    def circuitBreaker[F[_]: Sync](
       id: Identifier,
       ref: StateRef[F, State[F]],
       creator: F[CircuitBreaker[F]]
@@ -158,16 +160,15 @@ object CircuitBreakerRegistry {
   /**
    * Creates a `CircuitBreakerRegistry` instance given a [[RegistrySettings]] configuration, providing for clean up of resources
    *   when the registry is shutdown.
-   * @param settings - the configuration for the registry.
-   * @param strategy - the `fs2.Strategy` used for the execution of an effectful program `F` with a `fs2.util.Async` in implicit scope.
-   * @param scheduler - the `fs2.Scheduler` used for the execution of periodic tasks, such as the statistics stream and the
+   * @param settings the configuration for the registry.
+   * @param ec the execution context used for the execution of an effectful program `F` with a `Effect` in implicit scope.
+   * @param scheduler the scheduler used for the execution of periodic tasks, such as the statistics stream and the
    *   registry [[CircuitBreaker]] garbage collection.
-   * @param F - the `fs2.util.Async[F]` instance that describes how the programs protected by [[CircuitBreaker]]s in this registry are executed.
    * @tparam F - the type of effectful programs the circuit breakers in this registry will protect.
    * @return circuitBreakerRegistry - an effectful program describing the creation of the circuit breaker registry which
    *   will be executed when the program is run.
    */
-  def create[F[_]](settings: RegistrySettings)(implicit strategy: Strategy, scheduler: Scheduler, F: Async[F]): F[CircuitBreakerRegistry[F]] = {
+  def create[F[_]](settings: RegistrySettings)(implicit F: Effect[F], ec: ExecutionContext, scheduler: Scheduler): F[CircuitBreakerRegistry[F]] = {
     def collectGarbageInBackground(state: StateRef[F, State[F]], shutdownSignal: Signal[F, Boolean]) = {
       val collectGarbage = for {
         now <- F.delay(Instant.now)
@@ -178,7 +179,7 @@ object CircuitBreakerRegistry {
         }.map { _.flatten }
         _ <- state.modify(s => s.copy(circuitBreakers = s.circuitBreakers filterNot { case (id, _) => expiredIds.contains(id) }))
       } yield ()
-      if (settings.garbageCollection.checkInterval > 0.nanoseconds) F.start(
+      if (settings.garbageCollection.checkInterval > 0.nanoseconds) async.start(
         time.awakeEvery[F](settings.garbageCollection.checkInterval).evalMap { _ => collectGarbage }.interruptWhen(shutdownSignal).run.map { _ => () }
       )
       else F.pure(())

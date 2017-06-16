@@ -54,9 +54,9 @@ case class FailureStatistics private (
     id: CircuitBreaker.Identifier,
     config: FailureSettings,
     metrics: FailureStatistics.SlidingAggregateMetrics,
-    testing: Option[FailureStatistics.Testing] = None,
-    change: Option[FailureStatistics.Change] = None,
-    lastActivity: Instant = Instant.EPOCH
+    testing: Option[FailureStatistics.Testing],
+    change: Option[FailureStatistics.Change],
+    lastActivity: Instant
 ) extends Statistics {
 
   import FailureStatistics._
@@ -247,7 +247,7 @@ object FailureStatistics {
    * @return initialFailureSettings - the initial instance for this data type.
    */
   def initial(id: CircuitBreaker.Identifier, config: FailureSettings): FailureStatistics =
-    FailureStatistics(id, config, SlidingAggregateMetrics.initial(config.sampleWindow))
+    FailureStatistics(id, config, SlidingAggregateMetrics.initial(config.sampleWindow), None, None, Instant.EPOCH)
 }
 
 /**
@@ -270,7 +270,7 @@ case class FlowControlStatistics private (
     id: CircuitBreaker.Identifier,
     metrics: FlowControlStatistics.Metrics,
     failure: FailureStatistics,
-    change: Option[FlowControlStatistics.Change] = None
+    change: Option[FlowControlStatistics.Change]
 ) extends Statistics {
 
   import FlowControlStatistics._
@@ -636,6 +636,7 @@ object FlowControlStatistics {
   def initial(id: CircuitBreaker.Identifier, config: FlowControlSettings): FlowControlStatistics = FlowControlStatistics(
     id,
     Metrics(config, AggregateFlowRate.initial(config.sampleWindow), AggregateFlowRate.initial(config.sampleWindow)),
-    FailureStatistics.initial(id, config.failure)
+    FailureStatistics.initial(id, config.failure),
+    None
   )
 }

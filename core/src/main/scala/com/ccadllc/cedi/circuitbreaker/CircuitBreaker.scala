@@ -15,8 +15,8 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import fs2.util.Async
-import fs2.util.syntax._
+import cats.effect.Sync
+import cats.implicits._
 
 import java.time.Instant
 
@@ -28,10 +28,9 @@ import CircuitBreaker._
 
 /**
  * The library's main abstraction, representing protection of an effectful
- * program which has a instance of `fs2.Async` in implicit scope.  The API is
- * relatively simple, consisting of one primary function, `protect`, which takes the
- * program to protect and returns that an enhanced version of that program having the
- * ability to fail fast without invoking the underlying service if conditions
+ * program.  The API is relatively simple, consisting of one primary function, `protect`,
+ * which takes the program to protect and returns that an enhanced version of that program
+ * having the ability to fail fast without invoking the underlying service if conditions
  * warrant, ensuring failure of the service it represents does not result in a cascade
  * of failure.  The `CircuitBreaker` has two secondary
  * functions: 1.) `currentStatistics`, which provides the current [[statistics.Statistics]]
@@ -48,10 +47,9 @@ import CircuitBreaker._
  *
  * @param id - the unique identifier for this circuit breaker.  This is used to look up the
  *   `CircuitBreaker` instance from the registry (or, if not present, to create a new instance).
- * @param F - an instance of `fs2.util.Async[F]` in implicit scope.
  * @tparam F - the type of effectful program.
  */
-sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Async[F]) {
+sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Sync[F]) {
 
   /**
    * Provides protection over the provided effectful program based on the configuration
@@ -224,7 +222,7 @@ object CircuitBreaker {
       evaluator: FailureEvaluator,
       publishEvent: CircuitBreakerEvent => F[Unit],
       statistics: StateRef[F, FailureStatistics]
-  )(implicit F: Async[F]) extends CircuitBreaker[F](id) {
+  )(implicit F: Sync[F]) extends CircuitBreaker[F](id) {
     type StatisticsVariant = FailureStatistics
 
     def currentStatistics: F[Statistics] = statistics.get map { s => s: Statistics }
@@ -234,7 +232,7 @@ object CircuitBreaker {
     private[circuitbreaker] def beforeExecution: F[FailureStatistics] = for {
       ts <- now
       stats <- statistics.get
-      _ <- if (config.enabled && stats.openButUntestable(ts)) F.fail(OpenException(id, stats)) else F.pure(())
+      _ <- if (config.enabled && stats.openButUntestable(ts)) F.raiseError(OpenException(id, stats)) else F.pure(())
     } yield stats
 
     private[circuitbreaker] def afterExecution[A](beforeStats: FailureStatistics, attempt: Either[Throwable, A]): F[A] = {
@@ -243,15 +241,15 @@ object CircuitBreaker {
         def triggerClosedEvent(stats: FailureStatistics): F[Unit] = publishEvent(ClosedEvent(id, stats))
         if (stats.lastChangeOpened) triggerOpenedEvent(stats) else if (stats.lastChangeClosed) triggerClosedEvent(stats) else F.pure(())
       }
-      def attemptToAsyncF: F[A] = attempt.fold(F.fail, F.pure)
+      def attemptToF: F[A] = attempt.fold(F.raiseError, F.pure)
       if (config.enabled) {
         for {
           ts <- now
           s <- statistics.modify(_.afterExecution(timestamp = ts, success = attempt.fold(!evaluator.tripsCircuitBreaker(_), _ => true)))
           _ <- notifyIfReportableChange(s)
-          result <- attemptToAsyncF
+          result <- attemptToF
         } yield result
-      } else attemptToAsyncF
+      } else attemptToF
     }
   }
 
@@ -276,7 +274,7 @@ object CircuitBreaker {
     config: FailureSettings,
     evaluator: FailureEvaluator,
     publishEvent: CircuitBreakerEvent => F[Unit]
-  )(implicit F: Async[F]): F[CircuitBreaker[F]] =
+  )(implicit F: Sync[F]): F[CircuitBreaker[F]] =
     StateRef.create[F, FailureStatistics](FailureStatistics.initial(id, config)) map { new FailureCircuitBreaker(id, config, evaluator, publishEvent, _) }
 
   /*
@@ -290,7 +288,7 @@ object CircuitBreaker {
       publishEvent: CircuitBreakerEvent => F[Unit],
       statistics: StateRef[F, FlowControlStatistics],
       failureCircuitBreaker: FailureCircuitBreaker[F]
-  )(implicit F: Async[F]) extends CircuitBreaker[F](id) {
+  )(implicit F: Sync[F]) extends CircuitBreaker[F](id) {
 
     type StatisticsVariant = FlowControlStatistics
 
@@ -301,7 +299,7 @@ object CircuitBreaker {
     private[circuitbreaker] def beforeExecution: F[FlowControlStatistics] = {
       def applyFailure(failureStats: FailureStatistics): F[FlowControlStatistics] = statistics.modify(_.withFailure(failureStats))
       def applyStatisticsBeforeThrottling: F[FlowControlStatistics] = now flatMap { ts => statistics.modify(_.beforeThrottle(ts)) }
-      def throttleIfNecessary(stats: FlowControlStatistics): F[Unit] = if (stats.shouldBeThrottled) F.fail(ThrottledException(id, stats)) else F.pure(())
+      def throttleIfNecessary(stats: FlowControlStatistics): F[Unit] = if (stats.shouldBeThrottled) F.raiseError(ThrottledException(id, stats)) else F.pure(())
       def applyStatisticsBeforeExecution: F[FlowControlStatistics] = for {
         beforeStats <- statistics.modify(_.beforeExecution)
         _ <- notifyIfReportableChange(beforeStats)
@@ -356,7 +354,7 @@ object CircuitBreaker {
     config: FlowControlSettings,
     evaluator: FailureEvaluator,
     publishEvent: CircuitBreakerEvent => F[Unit]
-  )(implicit F: Async[F]): F[CircuitBreaker[F]] = for {
+  )(implicit F: Sync[F]): F[CircuitBreaker[F]] = for {
     flowControlStats <- StateRef.create[F, FlowControlStatistics](FlowControlStatistics.initial(id, config))
     failureStats <- StateRef.create[F, FailureStatistics](FailureStatistics.initial(id, config.failure))
     failureCB = new FailureCircuitBreaker(id, config.failure, evaluator, publishEvent, failureStats)

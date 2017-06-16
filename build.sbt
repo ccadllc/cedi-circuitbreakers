@@ -13,13 +13,12 @@ lazy val core = project.in(file("core")).enablePlugins(SbtOsgi).
     name := "circuitbreaker",
     libraryDependencies ++= Seq(
       "com.ccadllc.cedi" %% "config" % "1.1.0",
-      "co.fs2" %% "fs2-core" % "0.9.2",
+      "co.fs2" %% "fs2-core" % "0.10.0-M2",
       "org.scalatest" %% "scalatest" % "3.0.1" % "test"
     ),
     buildOsgiBundle("com.ccadllc.cedi.circuitbreaker")
   )
 
-lazy val readme = project.in(file("readme")).settings(commonSettings).settings(noPublish).settings(
-  tutSettings,
+lazy val readme = project.in(file("readme")).settings(commonSettings).settings(noPublish).enablePlugins(TutPlugin).settings(
   tutTargetDirectory := baseDirectory.value / ".."
 ).dependsOn(core)

@@ -19,24 +19,20 @@ The term `Circuit breaker` in software engineering applies to a programming patt
 Here is a simple example of the use of a circuit breaker to protect against cascading failures. Aside from its configuration - described later in this README - the syntax and semantics in the use of the flow control circuit breaker is identical.
 
 ```tut:silent
-import fs2.{ Scheduler, Strategy, Task }
+import cats.effect.IO
+import fs2.Scheduler
 
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeoutException
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
 import com.ccadllc.cedi.circuitbreaker._
 
-/*
- * We create an implicit strategy and scheduler for our effectful `fs2.Task`s.
- */
-implicit val strategy: Strategy = Strategy.fromFixedDaemonPool(
-  Runtime.getRuntime.availableProcessors * 2, "circuitbreaker-example-strategy"
-)
 implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(
-  Runtime.getRuntime.availableProcessors * 2, "circuitbreaker-example-scheduler"
+  Runtime.getRuntime.availableProcessors, "circuitbreaker-example-scheduler"
 )
 
 /*
@@ -68,14 +64,14 @@ val databaseCircuitBreakerSettings: FailureSettings = FailureSettings(
 case class QuarterlyProductSales(productId: UUID, productName: String, totalSales: Long)
 
 /* A simple stub to represent a query to a remote dynamodb persistent database */
-def retrieveQuarterlyProductSales: Task[Vector[QuarterlyProductSales]] =
-  Task.delay(Vector(QuarterlyProductSales(UUID.randomUUID, "widgets", 565000L)))
+def retrieveQuarterlyProductSales: IO[Vector[QuarterlyProductSales]] =
+  IO(Vector(QuarterlyProductSales(UUID.randomUUID, "widgets", 565000L)))
 
 /*
  * A service to abstract interactions with a remote database.  For our example purposes, it only has one
  * entry point, to query for `QuarterlyProductSales` objects.
  */
-class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSettings: FailureSettings) {
+class DatabaseService(cbRegistry: CircuitBreakerRegistry[IO], circuitBreakerSettings: FailureSettings) {
   /*
    * The dynamodb client circuit breaker is identified in the registry via the
    * `CircuitBreaker.Identifier`
@@ -94,7 +90,7 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSe
     case _ => false
   }
 
-  def getAllQuarterlyProductSales: Task[Vector[QuarterlyProductSales]] = for {
+  def getAllQuarterlyProductSales: IO[Vector[QuarterlyProductSales]] = for {
     /*
      * The registry will look up the circuit breaker by identifier,
      * creating it if it does not yet exist.
@@ -120,7 +116,7 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[Task], circuitBreakerSe
  * above.
  */
 val protectedSystem = for {
-  cbRegistry <- CircuitBreakerRegistry.create[Task](circuitBreakerRegistrySettings)
+  cbRegistry <- CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings)
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
   result <- dbService.getAllQuarterlyProductSales
 } yield ()
@@ -130,7 +126,7 @@ val protectedSystem = for {
  */
 
 /* At the end of the universe, run things! */
-protectedSystem.unsafeRun()
+protectedSystem.unsafeRunSync()
 ```
 
 #### <a id="eventsusage"></a> Circuit Breaker Event Subscription
@@ -138,7 +134,8 @@ protectedSystem.unsafeRun()
 Interested processes can subscribe to events related to a system's circuit breaker activity.  There is an example of its use.
 
 ```tut:silent
-import fs2.{ Stream, Task }
+import cats.effect.IO
+import fs2.{ async, Stream }
 import com.ccadllc.cedi.circuitbreaker.{ CircuitBreakerRegistry, CircuitBreaker }
 import com.ccadllc.cedi.circuitbreaker.statistics.{ FailureStatistics, FlowControlStatistics }
 
@@ -146,8 +143,8 @@ import com.ccadllc.cedi.circuitbreaker.statistics.{ FailureStatistics, FlowContr
  * In this method, we subscribe to a stream of circuit breaker events triggered on
  * state changes and process them in some manner (that manner is not shown here).
  */
-def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[Task]): Task[Unit] = {
-  def processCircuitBreakerEvent(event: CircuitBreaker.CircuitBreakerEvent): Task[Unit] = event match {
+def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[IO]): IO[Unit] = {
+  def processCircuitBreakerEvent(event: CircuitBreaker.CircuitBreakerEvent): IO[Unit] = event match {
     case CircuitBreaker.OpenedEvent(id: CircuitBreaker.Identifier, stats: statistics.FailureStatistics) => ???
     case CircuitBreaker.ClosedEvent(id: CircuitBreaker.Identifier, stats: statistics.FailureStatistics) => ???
     case CircuitBreaker.ThrottledDownEvent(id: CircuitBreaker.Identifier, stats: statistics.FlowControlStatistics) => ???
@@ -157,7 +154,7 @@ def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[Task]): Task[
   val eventStream = cbRegistry.events(maxQueuedEvents) flatMap { event =>
     Stream.eval_(processCircuitBreakerEvent(event))
   }
-  Task.start(eventStream.run) map { _ => () }
+  async.start(eventStream.run) map { _ => () }
 }
 
 /*
@@ -165,7 +162,7 @@ def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[Task]): Task[
  * system to use. The circuit breaker is passed configuration settings, as described above.
  */
 val protectedSystem = for {
-  cbRegistry <- CircuitBreakerRegistry.create[Task](circuitBreakerRegistrySettings)
+  cbRegistry <- CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings)
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
   result <- dbService.getAllQuarterlyProductSales
   _ <- monitorCircuitBreakerEvents(cbRegistry)
@@ -176,7 +173,7 @@ val protectedSystem = for {
  */
 
 /* At the end of the universe, run things! */
-protectedSystem.unsafeRun()
+protectedSystem.unsafeRunSync()
 ```
 
 ### <a id="config"></a> Configuration

@@ -15,8 +15,6 @@
  */
 package com.ccadllc.cedi
 
-import fs2.util.Async
-
 import scala.language.higherKinds
 
 /**
@@ -28,24 +26,20 @@ import scala.language.higherKinds
  * circuit breakers.
  */
 package object circuitbreaker {
-  object syntax {
+  /**
+   * Provides syntax enrichment on the effectful program `F[A]` so that
+   * one can write, for example, `prg.protect(circuitBreaker)` rather than
+   * `circuitBreaker.protect(prg)`.  This can lead to less awkward code
+   * under certain circumstances.
+   */
+  implicit class CircuitBreakerOps[F[_], A](val self: F[A]) extends AnyVal {
     /**
-     * Provides syntax enrichment on the effectful program `F[A]` so that
-     * one can write, for example, `task.protect(circuitBreaker)` rather than
-     * `circuitBreaker.protect(task)`.  This can lead to less awkward code
-     * under certain circumstances.
+     * Alternate manner in which to protect the effectful program `F[A]`.
+     * See [[CircuitBreaker#protect]] for details.
+     *
+     * @param cb - the [[CircuitBreaker]] instance which will protect this `F[A]`.
+     * @return enhancedProgram - the protected effectful program.
      */
-    implicit class CircuitBreakerAsyncF[F[_], A](val self: F[A]) extends AnyVal {
-      /**
-       * Alternate manner in which to protect the effectful program `F[A]` when
-       * there is an instance of `fs2.util.Async[F]` in implicit scope.  See [[CircuitBreaker#protect]]
-       * for details.
-       * @param cb - the [[CircuitBreaker]] instance which will protect this `F[A]`.
-       * @param F - the `fs2.util.Async[F]` in implicit scope which provides the constructs
-       *   under which `F[A]` executes.
-       * @return enhancedProgram - the protected effectful program.
-       */
-      def protect(cb: CircuitBreaker[F])(implicit F: Async[F]): F[A] = cb.protect(self)
-    }
+    def protect(cb: CircuitBreaker[F]): F[A] = cb.protect(self)
   }
 }

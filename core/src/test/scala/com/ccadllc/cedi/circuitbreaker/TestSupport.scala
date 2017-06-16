@@ -15,13 +15,15 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import fs2.{ Scheduler, Strategy, Task }
-import fs2.util.Async
-import fs2.util.syntax._
+import cats.effect.IO
+import cats.implicits._
+
+import fs2.{ async, Scheduler }
 
 import java.util.concurrent.Executors
 
 import scala.collection.immutable.Vector
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.util.Random
 
@@ -35,10 +37,6 @@ trait TestSupport extends WordSpecLike with Matchers {
   self: Suite =>
 
   private val GroupTasksBy = 10
-
-  private val testExecutor = Executors.newCachedThreadPool
-
-  implicit val testStrategy: Strategy = Strategy.fromExecutor(testExecutor)
 
   implicit val scheduler: Scheduler = Scheduler.fromScheduledExecutorService(Executors.newSingleThreadScheduledExecutor)
 
@@ -59,31 +57,31 @@ trait TestSupport extends WordSpecLike with Matchers {
       throttledUpEvents: Map[Identifier, Vector[ThrottledUpEvent]] = Map.empty,
       throttledDownEvents: Map[Identifier, Vector[ThrottledDownEvent]] = Map.empty
     )
-    private val state = StateRef.create[Task, State](State()).unsafeRun
+    private val state = StateRef.create[IO, State](State()).unsafeRunSync
 
     def openedEvents(id: Identifier): Vector[OpenedEvent] =
-      state.get.map { _.openedEvents.getOrElse(id, Vector.empty) }.unsafeRun
+      state.get.map { _.openedEvents.getOrElse(id, Vector.empty) }.unsafeRunSync
     def openedCount(id: Identifier): Int = openedEvents(id).size
     def closedEvents(id: Identifier): Vector[ClosedEvent] =
-      state.get.map { _.closedEvents.getOrElse(id, Vector.empty) }.unsafeRun
+      state.get.map { _.closedEvents.getOrElse(id, Vector.empty) }.unsafeRunSync
     def closedCount(id: Identifier): Int = closedEvents(id).size
     def throttledUpEvents(id: Identifier): Vector[ThrottledUpEvent] =
-      state.get.map { _.throttledUpEvents.getOrElse(id, Vector.empty) }.unsafeRun
+      state.get.map { _.throttledUpEvents.getOrElse(id, Vector.empty) }.unsafeRunSync
     def throttledUpCount(id: Identifier): Int = throttledUpEvents(id).size
     def throttledDownEvents(id: Identifier): Vector[ThrottledDownEvent] =
-      state.get.map { _.throttledDownEvents.getOrElse(id, Vector.empty) }.unsafeRun
+      state.get.map { _.throttledDownEvents.getOrElse(id, Vector.empty) }.unsafeRunSync
     def throttledDownCount(id: Identifier): Int = throttledDownEvents(id).size
 
-    def opened(id: Identifier, stats: FailureStatistics): Task[Unit] = state.modify { s =>
+    def opened(id: Identifier, stats: FailureStatistics): IO[Unit] = state.modify { s =>
       s.copy(openedEvents = addEventToMap(id, OpenedEvent(id, stats), s.openedEvents))
     } map { _ => () }
-    def closed(id: Identifier, stats: FailureStatistics): Task[Unit] = state.modify { s =>
+    def closed(id: Identifier, stats: FailureStatistics): IO[Unit] = state.modify { s =>
       s.copy(closedEvents = addEventToMap(id, ClosedEvent(id, stats), s.closedEvents))
     } map { _ => () }
-    def throttledUp(id: Identifier, stats: FlowControlStatistics): Task[Unit] = state.modify { s =>
+    def throttledUp(id: Identifier, stats: FlowControlStatistics): IO[Unit] = state.modify { s =>
       s.copy(throttledUpEvents = addEventToMap(id, ThrottledUpEvent(id, stats), s.throttledUpEvents))
     } map { _ => () }
-    def throttledDown(id: Identifier, stats: FlowControlStatistics): Task[Unit] = state.modify { s =>
+    def throttledDown(id: Identifier, stats: FlowControlStatistics): IO[Unit] = state.modify { s =>
       s.copy(throttledDownEvents = addEventToMap(id, ThrottledDownEvent(id, stats), s.throttledDownEvents))
     } map { _ => () }
 
@@ -95,14 +93,14 @@ trait TestSupport extends WordSpecLike with Matchers {
 
   object TestStreamedEventObserver {
     private val EventsQueuedLimit = 56
-    def create(registry: CircuitBreakerRegistry[Task]): TestStreamedEventObserver = {
+    def create(registry: CircuitBreakerRegistry[IO]): TestStreamedEventObserver = {
       val tseo = new TestStreamedEventObserver
       registry.events(EventsQueuedLimit).evalMap {
         case OpenedEvent(id, stats) => tseo.opened(id, stats)
         case ClosedEvent(id, stats) => tseo.closed(id, stats)
         case ThrottledUpEvent(id, stats) => tseo.throttledUp(id, stats)
         case ThrottledDownEvent(id, stats) => tseo.throttledDown(id, stats)
-      }.drain.run.unsafeRunAsync { _ => () }
+      }.drain.run.runAsync(_ => IO.unit).unsafeRunSync
       tseo
     }
   }
@@ -112,23 +110,23 @@ trait TestSupport extends WordSpecLike with Matchers {
       failureStatistics: Map[Identifier, Vector[FailureStatistics]] = Map.empty,
       flowControlStatistics: Map[Identifier, Vector[FlowControlStatistics]] = Map.empty
     )
-    private val state = StateRef.create[Task, State](State()).unsafeRun
+    private val state = StateRef.create[IO, State](State()).unsafeRunSync
 
     def failureStatistics(id: Identifier): Vector[FailureStatistics] =
-      state.get.map { _.failureStatistics.getOrElse(id, Vector.empty) }.unsafeRun
+      state.get.map { _.failureStatistics.getOrElse(id, Vector.empty) }.unsafeRunSync
 
     def failureStatisticsCount(id: Identifier): Int = failureStatistics(id).size
 
     def flowControlStatistics(id: Identifier): Vector[FlowControlStatistics] =
-      state.get.map { _.flowControlStatistics.getOrElse(id, Vector.empty) }.unsafeRun
+      state.get.map { _.flowControlStatistics.getOrElse(id, Vector.empty) }.unsafeRunSync
 
     def flowControlStatisticsCount(id: Identifier): Int = flowControlStatistics(id).size
 
-    def add(stats: FailureStatistics): Task[Unit] = state.modify { s =>
+    def add(stats: FailureStatistics): IO[Unit] = state.modify { s =>
       s.copy(failureStatistics = addStatisticsToMap(stats.id, stats, s.failureStatistics))
     } map { _ => () }
 
-    def add(stats: FlowControlStatistics): Task[Unit] = state.modify { s =>
+    def add(stats: FlowControlStatistics): IO[Unit] = state.modify { s =>
       s.copy(flowControlStatistics = addStatisticsToMap(stats.id, stats, s.flowControlStatistics))
     } map { _ => () }
 
@@ -137,12 +135,12 @@ trait TestSupport extends WordSpecLike with Matchers {
   }
 
   object TestStreamedStatisticsObserver {
-    def create(registry: CircuitBreakerRegistry[Task], checkInterval: FiniteDuration): TestStreamedStatisticsObserver = {
+    def create(registry: CircuitBreakerRegistry[IO], checkInterval: FiniteDuration): TestStreamedStatisticsObserver = {
       val tsso = new TestStreamedStatisticsObserver
       registry.statistics(checkInterval).evalMap {
         case fs @ FailureStatistics(_, _, _, _, _, _) => tsso.add(fs)
         case fcs @ FlowControlStatistics(_, _, _, _) => tsso.add(fcs)
-      }.drain.run.unsafeRunAsync { _ => () }
+      }.drain.run.runAsync { _ => IO.unit }.unsafeRunSync
       tsso
     }
   }
@@ -154,18 +152,18 @@ trait TestSupport extends WordSpecLike with Matchers {
    * flowed events and exceptions are occurring as expected in the circuitbreaker
    * protecting the tasks.
    */
-  def protectFailure(cb: CircuitBreaker[Task], failureRate: Percentage): Vector[Option[Throwable]] = {
+  def protectFailure(cb: CircuitBreaker[IO], failureRate: Percentage): Vector[Option[Throwable]] = {
     val groupedTasks = if (testRequestSamples < GroupTasksBy) testRequestSamples else GroupTasksBy
-    val failedTasks = if (failureRate === Percentage.minimum) Vector.empty[Task[Unit]] else {
+    val failedTasks = if (failureRate === Percentage.minimum) Vector.empty[IO[Unit]] else {
       (1 to (testRequestSamples.toDouble / (100.0 / failureRate.percent)).round.toInt).toVector map { num =>
-        Task.delay {
+        IO {
           println(s"Failed task #$num.")
           Thread.sleep(5L)
-        } flatMap { _ => Task.fail(new Exception(s"Expected failure #$num")) }
+        } flatMap { _ => IO.raiseError(new Exception(s"Expected failure #$num")) }
       }
     }
     val successfulTasks = (1 to (testRequestSamples - failedTasks.size)).toVector map { num =>
-      Task.delay {
+      IO {
         println(s"Successful task #$num.")
         Thread.sleep(5L)
         ()
@@ -173,15 +171,15 @@ trait TestSupport extends WordSpecLike with Matchers {
     }
 
     Random.shuffle(successfulTasks ++ failedTasks).grouped(groupedTasks).toVector.traverse {
-      def protectInParallel(taskGroup: Vector[Task[Unit]]) = {
-        def attemptProtect(t: Task[Unit]) = cb.protect(t).attempt map { _.left.toOption }
-        implicitly[Async[Task]].parallelTraverse(taskGroup map attemptProtect)(identity)
+      def protectInParallel(taskGroup: Vector[IO[Unit]]) = {
+        def attemptProtect(t: IO[Unit]) = cb.protect(t).attempt map { _.left.toOption }
+        async.parallelTraverse(taskGroup map attemptProtect)(identity)
       }
       protectInParallel(_) map { r =>
         Thread.sleep(50L)
         r
       }
-    }.map { _.flatten }.unsafeRun
+    }.map { _.flatten }.unsafeRunSync
   }
 
   /**
@@ -194,32 +192,32 @@ trait TestSupport extends WordSpecLike with Matchers {
    * exceptions are occurring as expected in the circuitbreaker protecting the tasks.
    */
   def protectFlowControl(
-    cb: CircuitBreaker[Task],
+    cb: CircuitBreaker[IO],
     initialRequestTime: FiniteDuration,
     requestTimeAdjustment: FiniteDuration,
     pauseBetweenTaskGroups: FiniteDuration
   ): Unit = {
     val groupedTasks = if (testRequestSamples < GroupTasksBy) testRequestSamples else GroupTasksBy
-    case class ExecutionContext(tasks: Vector[Task[Unit]] = Vector.empty, currentRequestTime: FiniteDuration = initialRequestTime)
+    case class ExecutionContext(tasks: Vector[IO[Unit]] = Vector.empty, currentRequestTime: FiniteDuration = initialRequestTime)
     val ec = (1 to testRequestSamples).toVector.foldLeft(ExecutionContext()) {
       case (ctx, num) =>
         val updatedRequestTime = ctx.currentRequestTime.plus(requestTimeAdjustment).max(0.milliseconds)
-        val task = Task.delay {
-          println(s"Task #$num with request time of $updatedRequestTime.")
+        val task = IO {
+          println(s"IO #$num with request time of $updatedRequestTime.")
           Thread.sleep(updatedRequestTime.toMillis)
           ()
         }
         ExecutionContext(ctx.tasks :+ task, updatedRequestTime)
     }
     ec.tasks.grouped(groupedTasks).toVector.traverse {
-      def protectInParallel(taskGroup: Vector[Task[Unit]]) = {
-        def attemptProtect(t: Task[Unit]) = Task.start(cb.protect(t).attempt)
-        implicitly[Async[Task]].parallelTraverse(taskGroup map attemptProtect)(identity)
+      def protectInParallel(taskGroup: Vector[IO[Unit]]) = {
+        def attemptProtect(t: IO[Unit]) = async.start(cb.protect(t).attempt)
+        async.parallelTraverse(taskGroup map attemptProtect)(identity)
       }
       protectInParallel(_) map { r =>
         Thread.sleep(pauseBetweenTaskGroups.toMillis)
         r
       }
-    }.map { _ => () }.unsafeRun
+    }.map { _ => () }.unsafeRunSync
   }
 }
