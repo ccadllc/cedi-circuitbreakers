@@ -47,7 +47,7 @@ trait TestSupport extends WordSpecLike with Matchers {
   val testTestingConfig: FailureSettings.Test = FailureSettings.Test(2.seconds, 10)
   val testFailureConfig: FailureSettings = FailureSettings(SampleWindow(50.milliseconds), testDegradationThreshold, testTestingConfig)
   val testFlowControlConfig: FlowControlSettings = FlowControlSettings(
-    testFailureConfig, SampleWindow(4.seconds), Percentage.minimum, Percentage.minimum, 500
+    testFailureConfig, SampleWindow(4.seconds), Percentage.minimum, Percentage.minimum, 0L, 500L
   )
 
   class TestStreamedEventObserver {

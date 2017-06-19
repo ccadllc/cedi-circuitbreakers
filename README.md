@@ -341,6 +341,16 @@ flow-control-circuitbreaker {
   # in effect act like a standard failure protection only variant.
   enabled: true
 
+  # This indicates the minimum inbound request per second mean which must be reached
+  # before throttling kicks in.  This helps reduce over-eager throttling at low rates
+  # where the allowed-over-processing-rate percentage may not be significant enough
+  # to otherwise avoid it. For example, an inbound rate of 0.8 and make allowed
+  # calculated as 0.3 will cause throttling even with allowed-over-processing-rate
+  # set to 10 percent.  In this case, setting the per-second-rate-minimum to
+  # 1 will ensure that throttling calculations will not occur until it reaches
+  # such a rate.  The default is 1
+  per-second-rate-minimum: 1
+
   # This indicates the hard limit for inbound requests per second.  If at any time the
   # number of requests per second exceed this value, requests will get throttled
   # until the start of the next second.  This is meant as a "failsafe" to
@@ -350,7 +360,7 @@ flow-control-circuitbreaker {
   # service can be handled in a sustained manner but not so high that it will
   # overwhelm the system for the period of time that it takes for the sample window
   # mean values to adjust to the increase in load and provide adaptive protection.
-  per-second-rate-threshold: 25
+  per-second-rate-hard-limit: 25
 }
 ```
 
