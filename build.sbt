@@ -16,7 +16,8 @@ lazy val core = project.in(file("core")).enablePlugins(SbtOsgi).
       "co.fs2" %% "fs2-core" % "0.10.0-M2",
       "org.scalatest" %% "scalatest" % "3.0.1" % "test"
     ),
-    buildOsgiBundle("com.ccadllc.cedi.circuitbreaker")
+    buildOsgiBundle("com.ccadllc.cedi.circuitbreaker"),
+    scalacOptions ++= (if (scalaBinaryVersion.value startsWith "2.11") List("-Xexperimental") else Nil) // 2.11 needs -Xexperimental to enable SAM conversion
   )
 
 lazy val readme = project.in(file("readme")).settings(commonSettings).settings(noPublish).enablePlugins(TutPlugin).settings(
