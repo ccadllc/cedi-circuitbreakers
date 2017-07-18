@@ -20,25 +20,34 @@ import cats.implicits._
 
 import fs2.{ async, Scheduler }
 
-import java.util.concurrent.Executors
-
 import scala.collection.immutable.Vector
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.util.Random
 
-import org.scalatest.{ Matchers, Suite, WordSpecLike }
+import org.scalatest.{ BeforeAndAfterAll, Matchers, Suite, WordSpecLike }
 
 import CircuitBreaker._
 
 import statistics._
 
-trait TestSupport extends WordSpecLike with Matchers {
+trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
   self: Suite =>
 
   private val GroupTasksBy = 10
 
-  implicit val scheduler: Scheduler = Scheduler.fromScheduledExecutorService(Executors.newSingleThreadScheduledExecutor)
+  var scheduler: Scheduler = _
+  private var shutdownScheduler: IO[Unit] = _
+
+  override def beforeAll() = {
+    val (s, shutdown) = Scheduler.allocate[IO](1).unsafeRunSync
+    scheduler = s
+    shutdownScheduler = shutdown
+  }
+
+  override def afterAll() = {
+    shutdownScheduler.unsafeRunSync
+  }
 
   val testRegistryConfig: RegistrySettings = RegistrySettings(RegistrySettings.GarbageCollection(5.minutes, 60.minutes))
 

@@ -28,7 +28,7 @@ class FlowControlCircuitBreakerTest extends WordSpec with TestSupport {
   "The flow control circuitbreaker" should {
     "throttle down the request rate when the inbound rate continue to exceed the max acceptable rate" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
       val tseo = TestStreamedEventObserver.create(registry)
       protectFlowControl(cb, 20.milliseconds, 5.milliseconds, 750.milliseconds)
@@ -42,7 +42,7 @@ class FlowControlCircuitBreakerTest extends WordSpec with TestSupport {
     }
     "throttle up the request rate when the inbound rate no longer exceeds the max acceptable rate" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
       val tseo = TestStreamedEventObserver.create(registry)
       protectFlowControl(cb, 20.milliseconds, 10.milliseconds, 750.milliseconds)

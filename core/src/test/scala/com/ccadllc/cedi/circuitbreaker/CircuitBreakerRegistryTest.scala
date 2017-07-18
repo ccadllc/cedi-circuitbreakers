@@ -27,14 +27,14 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
   "The circuit breaker registry" should {
     "register a new failure circuit breaker when an existing one with the given identifier does not exist" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync shouldBe 'empty
       val cb = registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
     }
     "return the existing failure circuit breaker when requested with the given identifier when it is already registered" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val cb = registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
       registry.forFailure(id, testFailureConfig).unsafeRunSync
@@ -42,7 +42,7 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
     }
     "remove an existing failure circuit breaker" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val cb = registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
       registry.removeCircuitBreaker(id).unsafeRunSync
@@ -50,14 +50,14 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
     }
     "register a new flow control circuit breaker when an existing one with the given identifier does not exist" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync shouldBe 'empty
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
     }
     "return the existing flow control circuit breaker when requested with the given identifier when it is already registered" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
       registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
@@ -65,7 +65,7 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
     }
     "remove an existing flow control circuit breaker" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
       registry.removeCircuitBreaker(id).unsafeRunSync
@@ -73,14 +73,14 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
     }
     "ignore removal of a non-existent circuit breaker" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe 'empty
       registry.removeCircuitBreaker(id).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe 'empty
     }
     "request a stream of events (when events are available)" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val tseo = TestStreamedEventObserver.create(registry)
       val failureThreshold = Percentage(20.0)
       val cb = registry.forFailure(id, testFailureConfig.copy(degradationThreshold = failureThreshold)).unsafeRunSync
@@ -89,7 +89,7 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
     }
     "request a stream of statistics (when statistics are available)" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
       val tsso = TestStreamedStatisticsObserver.create(registry, 20.milliseconds)
       val failureThreshold = Percentage(20.0)
       val cb = registry.forFailure(id, testFailureConfig.copy(degradationThreshold = failureThreshold)).unsafeRunSync
@@ -102,7 +102,7 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
       val gcCheckInterval = 50.milliseconds
       val inactivityCutoff = 500.milliseconds
       val gcSettings = RegistrySettings.GarbageCollection(gcCheckInterval, inactivityCutoff)
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig.copy(garbageCollection = gcSettings)).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig.copy(garbageCollection = gcSettings), scheduler).unsafeRunSync
       registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync should not be ('empty)
       Thread.sleep(inactivityCutoff.toMillis + (gcCheckInterval.toMillis * 2L))

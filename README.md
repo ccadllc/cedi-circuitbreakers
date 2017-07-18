@@ -20,7 +20,7 @@ Here is a simple example of the use of a circuit breaker to protect against casc
 
 ```scala
 import cats.effect.IO
-import fs2.Scheduler
+import fs2.{ Scheduler, Stream }
 
 import java.io.IOException
 import java.util.UUID
@@ -30,10 +30,6 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
 import com.ccadllc.cedi.circuitbreaker._
-
-implicit val scheduler: Scheduler = Scheduler.fromFixedDaemonPool(
-  Runtime.getRuntime.availableProcessors, "circuitbreaker-example-scheduler"
-)
 
 /*
  * The circuit breaker registry settings are fairly simple and only consist
@@ -115,11 +111,12 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[IO], circuitBreakerSett
  * system to use. The circuit breaker is passed configuration settings as described
  * above.
  */
-val protectedSystem = for {
-  cbRegistry <- CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings)
+val protectedSystem = (for {
+  scheduler <- Scheduler[IO](1)
+  cbRegistry <- Stream.eval(CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings, scheduler))
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
-  result <- dbService.getAllQuarterlyProductSales
-} yield ()
+  result <- Stream.eval(dbService.getAllQuarterlyProductSales)
+} yield ()).runLast.map(_.getOrElse(Vector.empty))
 
 /*
  * Here would be the rest of the program in a real world application.
@@ -161,12 +158,12 @@ def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[IO]): IO[Unit
  * Near the beginning of the universe, create a circuit breaker registry for the
  * system to use. The circuit breaker is passed configuration settings, as described above.
  */
-val protectedSystem = for {
-  cbRegistry <- CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings)
+val protectedSystem = (for {
+  scheduler <- Scheduler[IO](1)
+  cbRegistry <- Stream.eval(CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings, scheduler))
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
-  result <- dbService.getAllQuarterlyProductSales
-  _ <- monitorCircuitBreakerEvents(cbRegistry)
-} yield ()
+  result <- Stream.eval(dbService.getAllQuarterlyProductSales)
+} yield ()).runLast.map(_.getOrElse(Vector.empty))
 
 /*
  * Here would be the rest of the program in a real world application.
@@ -341,16 +338,6 @@ flow-control-circuitbreaker {
   # in effect act like a standard failure protection only variant.
   enabled: true
 
-  # This indicates the minimum inbound request per second mean which must be reached
-  # before throttling kicks in.  This helps reduce over-eager throttling at low rates
-  # where the allowed-over-processing-rate percentage may not be significant enough
-  # to otherwise avoid it. For example, an inbound rate of 0.8 and make allowed
-  # calculated as 0.3 will cause throttling even with allowed-over-processing-rate
-  # set to 10 percent.  In this case, setting the per-second-rate-minimum to
-  # 1 will ensure that throttling calculations will not occur until it reaches
-  # such a rate.  The default is 1
-  per-second-rate-minimum: 1
-
   # This indicates the hard limit for inbound requests per second.  If at any time the
   # number of requests per second exceed this value, requests will get throttled
   # until the start of the next second.  This is meant as a "failsafe" to
@@ -360,7 +347,7 @@ flow-control-circuitbreaker {
   # service can be handled in a sustained manner but not so high that it will
   # overwhelm the system for the period of time that it takes for the sample window
   # mean values to adjust to the increase in load and provide adaptive protection.
-  per-second-rate-hard-limit: 25
+  per-second-rate-threshold: 25
 }
 ```
 
