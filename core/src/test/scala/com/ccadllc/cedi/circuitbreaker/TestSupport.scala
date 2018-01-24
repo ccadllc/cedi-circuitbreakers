@@ -109,7 +109,7 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
         case ClosedEvent(id, stats) => tseo.closed(id, stats)
         case ThrottledUpEvent(id, stats) => tseo.throttledUp(id, stats)
         case ThrottledDownEvent(id, stats) => tseo.throttledDown(id, stats)
-      }.drain.run.runAsync(_ => IO.unit).unsafeRunSync
+      }.compile.drain.runAsync(_ => IO.unit).unsafeRunSync
       tseo
     }
   }
@@ -149,7 +149,7 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
       registry.statistics(checkInterval).evalMap {
         case fs @ FailureStatistics(_, _, _, _, _, _) => tsso.add(fs)
         case fcs @ FlowControlStatistics(_, _, _, _) => tsso.add(fcs)
-      }.drain.run.runAsync { _ => IO.unit }.unsafeRunSync
+      }.compile.drain.runAsync { _ => IO.unit }.unsafeRunSync
       tsso
     }
   }

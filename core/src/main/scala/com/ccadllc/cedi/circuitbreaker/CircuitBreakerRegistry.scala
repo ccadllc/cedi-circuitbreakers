@@ -181,7 +181,7 @@ object CircuitBreakerRegistry {
         _ <- state.modify(s => s.copy(circuitBreakers = s.circuitBreakers filterNot { case (id, _) => expiredIds.contains(id) }))
       } yield ()
       if (settings.garbageCollection.checkInterval > 0.nanoseconds) async.start(
-        scheduler.awakeEvery[F](settings.garbageCollection.checkInterval).evalMap { _ => collectGarbage }.interruptWhen(shutdownSignal).run.map { _ => () }
+        scheduler.awakeEvery[F](settings.garbageCollection.checkInterval).evalMap { _ => collectGarbage }.interruptWhen(shutdownSignal).compile.drain.map { _ => () }
       )
       else F.pure(())
     }
