@@ -15,22 +15,17 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import cats.effect.{ Effect, Sync }
+import cats.effect.{ Concurrent, Sync, Timer }
 import cats.implicits._
-
 import fs2._
 import fs2.async.mutable.{ Signal, Topic }
-
 import java.time.Instant
 
 import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
-
 import scala.language.higherKinds
-
 import CircuitBreaker._
 import CircuitBreakerRegistry._
-
 import statistics.Statistics
 
 /**
@@ -45,9 +40,8 @@ import statistics.Statistics
 final class CircuitBreakerRegistry[F[_]] private (
     state: StateRef[F, State[F]],
     eventTopic: Topic[F, Option[CircuitBreakerEvent]],
-    shutdownTrigger: ShutdownTrigger[F],
-    scheduler: Scheduler
-)(implicit ec: ExecutionContext, F: Effect[F]) {
+    shutdownTrigger: ShutdownTrigger[F]
+)(implicit ec: ExecutionContext, F: Concurrent[F], T: Timer[F]) {
 
   /**
    * Creates an `fs2.Stream` of [[CircuitBreaker#CircuitBreakerEvent]]s by subscribing to the event `fs2.async.mutable.Topic` maintained
@@ -69,7 +63,7 @@ final class CircuitBreakerRegistry[F[_]] private (
       cbs <- circuitBreakers
       stats <- cbs.values.toVector.traverse { _.currentStatistics }
     } yield stats
-    scheduler.awakeEvery[F](retrievalInterval).evalMap { _ => retrieveStatistics }.flatMap(Stream.emits(_)).interruptWhen(shutdownTrigger.signal)
+    Stream.awakeEvery[F](retrievalInterval).evalMap { _ => retrieveStatistics }.flatMap(Stream.emits(_)).interruptWhen(shutdownTrigger.signal)
   }
 
   /**
@@ -162,14 +156,14 @@ object CircuitBreakerRegistry {
    * Creates a `CircuitBreakerRegistry` instance given a [[RegistrySettings]] configuration, providing for clean up of resources
    *   when the registry is shutdown.
    * @param settings the configuration for the registry.
-   * @param scheduler the scheduler used for the execution of periodic tasks, such as the statistics stream and the
-   * @param ec the execution context used for the execution of an effectful program `F` with a `Effect` in implicit scope.
+   * @param ec the execution context used for the execution of an effectful program `F` with a `Concurrent` in implicit scope.
    *   registry [[CircuitBreaker]] garbage collection.
    * @tparam F - the type of effectful programs the circuit breakers in this registry will protect.
+   * @tparam T — the timer used for the execution of periodic tasks, such as the statistics stream and the
    * @return circuitBreakerRegistry - an effectful program describing the creation of the circuit breaker registry which
    *   will be executed when the program is run.
    */
-  def create[F[_]](settings: RegistrySettings, scheduler: Scheduler)(implicit F: Effect[F], ec: ExecutionContext): F[CircuitBreakerRegistry[F]] = {
+  def create[F[_]](settings: RegistrySettings)(implicit F: Concurrent[F], T: Timer[F], ec: ExecutionContext): F[CircuitBreakerRegistry[F]] = {
     def collectGarbageInBackground(state: StateRef[F, State[F]], shutdownSignal: Signal[F, Boolean]) = {
       val collectGarbage = for {
         now <- F.delay(Instant.now)
@@ -180,9 +174,9 @@ object CircuitBreakerRegistry {
         }.map { _.flatten }
         _ <- state.modify(s => s.copy(circuitBreakers = s.circuitBreakers filterNot { case (id, _) => expiredIds.contains(id) }))
       } yield ()
-      if (settings.garbageCollection.checkInterval > 0.nanoseconds) async.start(
-        scheduler.awakeEvery[F](settings.garbageCollection.checkInterval).evalMap { _ => collectGarbage }.interruptWhen(shutdownSignal).compile.drain.map { _ => () }
-      )
+      if (settings.garbageCollection.checkInterval > 0.nanoseconds) F.start(
+        Stream.awakeEvery[F](settings.garbageCollection.checkInterval).evalMap { _ => collectGarbage }.interruptWhen(shutdownSignal).compile.drain.map { _ => () }
+      ).map(_.join)
       else F.pure(())
     }
     for {
@@ -190,6 +184,6 @@ object CircuitBreakerRegistry {
       state <- StateRef.create[F, State[F]](State.empty[F])
       shutdownSignal <- async.signalOf[F, Boolean](false)
       _ <- collectGarbageInBackground(state, shutdownSignal)
-    } yield new CircuitBreakerRegistry(state, eventTopic, new ShutdownTrigger(shutdownSignal), scheduler)
+    } yield new CircuitBreakerRegistry(state, eventTopic, new ShutdownTrigger(shutdownSignal))
   }
 }

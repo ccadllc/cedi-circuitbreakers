@@ -20,7 +20,7 @@ Here is a simple example of the use of a circuit breaker to protect against casc
 
 ```scala
 import cats.effect.IO
-import fs2.{ Scheduler, Stream }
+import fs2.Stream
 
 import java.io.IOException
 import java.util.UUID
@@ -112,8 +112,7 @@ class DatabaseService(cbRegistry: CircuitBreakerRegistry[IO], circuitBreakerSett
  * above.
  */
 val protectedSystem = (for {
-  scheduler <- Scheduler[IO](1)
-  cbRegistry <- Stream.eval(CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings, scheduler))
+  cbRegistry <- Stream.eval(CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings))
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
   result <- Stream.eval(dbService.getAllQuarterlyProductSales)
 } yield ()).runLast.map(_.getOrElse(Vector.empty))
@@ -131,8 +130,8 @@ protectedSystem.unsafeRunSync()
 Interested processes can subscribe to events related to a system's circuit breaker activity.  There is an example of its use.
 
 ```scala
-import cats.effect.IO
-import fs2.{ async, Stream }
+import cats.effect.{Concurrent, IO}
+import fs2.Stream
 import com.ccadllc.cedi.circuitbreaker.{ CircuitBreakerRegistry, CircuitBreaker }
 import com.ccadllc.cedi.circuitbreaker.statistics.{ FailureStatistics, FlowControlStatistics }
 
@@ -151,7 +150,7 @@ def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[IO]): IO[Unit
   val eventStream = cbRegistry.events(maxQueuedEvents) flatMap { event =>
     Stream.eval_(processCircuitBreakerEvent(event))
   }
-  async.start(eventStream.run) map { _ => () }
+  Concurrent[IO].start(eventStream.run) map { _ => () }
 }
 
 /*
@@ -159,8 +158,7 @@ def monitorCircuitBreakerEvents(cbRegistry: CircuitBreakerRegistry[IO]): IO[Unit
  * system to use. The circuit breaker is passed configuration settings, as described above.
  */
 val protectedSystem = (for {
-  scheduler <- Scheduler[IO](1)
-  cbRegistry <- Stream.eval(CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings, scheduler))
+  cbRegistry <- Stream.eval(CircuitBreakerRegistry.create[IO](circuitBreakerRegistrySettings))
   dbService = new DatabaseService(cbRegistry, databaseCircuitBreakerSettings)
   result <- Stream.eval(dbService.getAllQuarterlyProductSales)
 } yield ()).runLast.map(_.getOrElse(Vector.empty))
