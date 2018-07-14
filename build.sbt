@@ -13,8 +13,8 @@ lazy val core = project.in(file("core")).enablePlugins(SbtOsgi).
     name := "circuitbreaker",
     libraryDependencies ++= Seq(
       "com.ccadllc.cedi" %% "config" % "1.1.0",
-      "co.fs2" %% "fs2-core" % "0.10.0",
-      "org.scalatest" %% "scalatest" % "3.0.4" % "test"
+      "co.fs2" %% "fs2-core" % "1.0.0-M1",
+      "org.scalatest" %% "scalatest" % "3.0.5" % "test"
     ),
     buildOsgiBundle("com.ccadllc.cedi.circuitbreaker"),
     scalacOptions ++= (if (scalaBinaryVersion.value startsWith "2.11") List("-Xexperimental") else Nil) // 2.11 needs -Xexperimental to enable SAM conversion

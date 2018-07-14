@@ -27,18 +27,18 @@ class FailureCircuitBreakerTest extends WordSpec with TestSupport {
   "The failure circuit breaker" should {
     "switch to the open position when the failure rate of the services it is protecting exceeds the configured threshold" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
       val failureThreshold = Percentage(20.0)
       val cb = registry.forFailure(id, testFailureConfig.copy(degradationThreshold = failureThreshold)).unsafeRunSync
       val tseo = TestStreamedEventObserver.create(registry)
       tseo.openedCount(id) shouldBe 0
       val results = protectFailure(cb, failureThreshold.plus(Percentage(10.0)))
       tseo.openedCount(id) should be > 0
-      results.collectFirst { case Some(CircuitBreaker.OpenException(id, _)) => id } shouldBe Some(id)
+      results.collectFirst { case Some(CircuitBreaker.OpenException(eId, _)) => eId } shouldBe Some(id)
     }
     "switch to the closed position after opening when the configured minimum number of service tests succeed" in {
       val id = CircuitBreaker.Identifier("test")
-      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig, scheduler).unsafeRunSync
+      val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
       val failureThreshold = Percentage(20.0)
       val cb = registry.forFailure(
         id,

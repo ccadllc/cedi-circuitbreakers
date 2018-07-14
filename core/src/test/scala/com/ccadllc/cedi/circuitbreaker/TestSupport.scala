@@ -15,39 +15,21 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import cats.effect.IO
+import cats.effect.{ Concurrent, IO }
 import cats.implicits._
-
-import fs2.{ async, Scheduler }
 
 import scala.collection.immutable.Vector
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.util.Random
-
 import org.scalatest.{ BeforeAndAfterAll, Matchers, Suite, WordSpecLike }
-
 import CircuitBreaker._
-
 import statistics._
 
 trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
   self: Suite =>
 
   private val GroupTasksBy = 10
-
-  var scheduler: Scheduler = _
-  private var shutdownScheduler: IO[Unit] = _
-
-  override def beforeAll() = {
-    val (s, shutdown) = Scheduler.allocate[IO](1).unsafeRunSync
-    scheduler = s
-    shutdownScheduler = shutdown
-  }
-
-  override def afterAll() = {
-    shutdownScheduler.unsafeRunSync
-  }
 
   val testRegistryConfig: RegistrySettings = RegistrySettings(RegistrySettings.GarbageCollection(5.minutes, 60.minutes))
 
@@ -179,10 +161,10 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
       }
     }
 
-    Random.shuffle(successfulTasks ++ failedTasks).grouped(groupedTasks).toVector.traverse {
+    Random.shuffle(successfulTasks ++ failedTasks).grouped(groupedTasks).toVector.traverse[IO, Vector[Option[Throwable]]] {
       def protectInParallel(taskGroup: Vector[IO[Unit]]) = {
-        def attemptProtect(t: IO[Unit]) = cb.protect(t).attempt map { _.left.toOption }
-        async.parallelTraverse(taskGroup map attemptProtect)(identity)
+        def attemptProtect(t: IO[Unit]): IO[Option[Throwable]] = cb.protect(t).attempt map { _.left.toOption }
+        taskGroup.map(attemptProtect).parTraverse[IO, IO.Par, Option[Throwable]](identity)
       }
       protectInParallel(_) map { r =>
         Thread.sleep(50L)
@@ -218,10 +200,10 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
         }
         ExecutionContext(ctx.tasks :+ task, updatedRequestTime)
     }
-    ec.tasks.grouped(groupedTasks).toVector.traverse {
+    ec.tasks.grouped(groupedTasks).toVector.traverse[IO, Vector[IO[Either[Throwable, Unit]]]] {
       def protectInParallel(taskGroup: Vector[IO[Unit]]) = {
-        def attemptProtect(t: IO[Unit]) = async.start(cb.protect(t).attempt)
-        async.parallelTraverse(taskGroup map attemptProtect)(identity)
+        def attemptProtect(t: IO[Unit]): IO[IO[Either[Throwable, Unit]]] = Concurrent[IO].start(cb.protect(t).attempt).map(_.join)
+        taskGroup.map(attemptProtect).parTraverse[IO, IO.Par, IO[Either[Throwable, Unit]]](identity)
       }
       protectInParallel(_) map { r =>
         Thread.sleep(pauseBetweenTaskGroups.toMillis)

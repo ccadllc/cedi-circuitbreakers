@@ -61,9 +61,9 @@ case class FailureStatistics private (
 
   import FailureStatistics._
 
-  val lastChangeOpened: Boolean = change exists { _ == Change.Opened }
+  val lastChangeOpened: Boolean = change contains Change.Opened
 
-  val lastChangeClosed: Boolean = change exists { _ == Change.Closed }
+  val lastChangeClosed: Boolean = change contains Change.Closed
 
   val open: Boolean = testing.isDefined
 
@@ -85,12 +85,10 @@ case class FailureStatistics private (
    * @return newStatistics - The metrics are updated based on the evaluation of the statistics.
    */
   def afterExecution(timestamp: Instant, success: Boolean): FailureStatistics = testing match {
-    case Some(testing) =>
-      val updatedTesting = testing.update(timestamp, success)
-      if (updatedTesting.successes >= config.test.minimumSuccesses)
-        copy(metrics = metrics.reset, testing = None, change = Some(Change.Closed), lastActivity = timestamp)
-      else
-        copy(testing = Some(updatedTesting), change = None, lastActivity = timestamp)
+    case Some(t) =>
+      val updatedTesting = t.update(timestamp, success)
+      if (updatedTesting.successes >= config.test.minimumSuccesses) copy(metrics = metrics.reset, testing = None, change = Some(Change.Closed), lastActivity = timestamp)
+      else copy(testing = Some(updatedTesting), change = None, lastActivity = timestamp)
     case None =>
       val effectiveMetrics = metrics.addToWindow(timestamp, success)
       val tripsBreaker = effectiveMetrics.percentFailure greaterThan config.degradationThreshold
@@ -184,7 +182,7 @@ object FailureStatistics {
     val percentFailure: Percentage = if (!vector.fullWindowCollected) Percentage.minimum else {
       val countF: Int = vector.entries.foldLeft(0) { case (count, success) => if (!success.value) count + 1 else count }
       val total = vector.entries.size
-      Percentage.withinLimits(if (total == 0) 0.0 else ((countF.toDouble / total.toDouble) * 100.0))
+      Percentage.withinLimits(if (total == 0) 0.0 else (countF.toDouble / total.toDouble) * 100.0)
     }
   }
   /**
@@ -280,14 +278,14 @@ case class FlowControlStatistics private (
    * (the [[CircuitBreaker]] can allow its protected program execution to throttle up).
    * @return isThrottledUp - the last state change indicates that the maximum acceptable rate has been increased.
    */
-  def throttledUp: Boolean = change exists { _ == Change.ThrottledUp }
+  def throttledUp: Boolean = change contains Change.ThrottledUp
 
   /**
    * Indicates that the last state change was that the maximum acceptable rate was decreased
    * (the [[CircuitBreaker]] should throttle down the rate of requests it allows through to execution, throttling the service down).
    * @return isThrottledDown - the last state change indicates that the maximum acceptable rate has been decreased.
    */
-  def throttledDown: Boolean = change exists { _ == Change.ThrottledDown }
+  def throttledDown: Boolean = change contains Change.ThrottledDown
 
   /**
    * The mean/average effective inbound rate per second (effective in that requests that are throttled/failed fast are not
@@ -521,7 +519,7 @@ object FlowControlStatistics {
      * Increments the per-second request rate count.
      * @return newAggregateFlowRate - A new instance of this data type with the per-second count incremented by 1.
      */
-    def addToSample: AggregateFlowRate = copy(currentSample = currentSample.copy(perSecondCount = currentSample.perSecondCount + 1))
+    def addToSample(): AggregateFlowRate = copy(currentSample = currentSample.copy(perSecondCount = currentSample.perSecondCount + 1))
 
     /**
      * Possibly age the current per-second sample, if more than one second has passed since the current per-second sample count started,
@@ -586,8 +584,8 @@ object FlowControlStatistics {
      * inbound rate samples collected in order to calculate it).  This is calculated by current mean processing
      * rate + a configurable percentage over the processing rate.
      */
-    val maxAcceptableRate: Option[MeanFlowRate] = if (inboundRate.fullWindowCollected && meanProcessingRate.perSecond > 0)
-      Some(MeanFlowRate(meanProcessingRate.perSecond + (meanProcessingRate.perSecond * config.allowedOverProcessingRate.percent / 100.0))) else None
+    val maxAcceptableRate: Option[MeanFlowRate] =
+      if (inboundRate.fullWindowCollected && meanProcessingRate.perSecond > 0) Some(MeanFlowRate(meanProcessingRate.perSecond + (meanProcessingRate.perSecond * config.allowedOverProcessingRate.percent / 100.0))) else None
 
     /**
      * This ages both the inbound and processing rate statistics.  This is a lifecycle function invoked by the
@@ -608,7 +606,7 @@ object FlowControlStatistics {
      * to throttle the request but before we execute it.
      * @return newMetrics - a new instance of this data type with the inbound rate incremented by 1.
      */
-    def beforeExecution: Metrics = copy(inboundRate = inboundRate.addToSample)
+    def beforeExecution: Metrics = copy(inboundRate = inboundRate.addToSample())
 
     /**
      * This increments the current sample's processing request count.
@@ -616,7 +614,7 @@ object FlowControlStatistics {
      * the request and it has completed.
      * @return newMetrics - a new instance of this data type with the processing rate incremented by 1.
      */
-    def afterExecution: Metrics = copy(processingRate = processingRate.addToSample)
+    def afterExecution: Metrics = copy(processingRate = processingRate.addToSample())
 
     /**
      * Renders the aggregate flow rate as a human-readable string value.
