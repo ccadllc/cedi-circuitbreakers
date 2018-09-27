@@ -18,10 +18,9 @@ package com.ccadllc.cedi.circuitbreaker
 import cats.effect.{ Concurrent, Sync, Timer }
 import cats.implicits._
 import fs2._
-import fs2.async.mutable.{ Signal, Topic }
+import fs2.concurrent.{ SignallingRef, Topic }
 import java.time.Instant
 
-import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 import scala.language.higherKinds
 import CircuitBreaker._
@@ -31,32 +30,31 @@ import statistics.Statistics
 /**
  * The circuit breaker registry maintains the non-persistent collection of [[CircuitBreaker]]s created
  * for a given virtual machine.  It provides the means to create and retrieve circuit breakers and to
- * subscribe to `fs2.Stream`s of [[statistics.Statistics]] and [[CircuitBreaker#CircuitBreakerEvent]]
+ * subscribe to `Stream`s of [[statistics.Statistics]] and [[CircuitBreaker#CircuitBreakerEvent]]
  * state change events.  A `CircuitBreakerRegistry` instance is not directly instantiated but rather
  * created via the smart constructor in the companion object.  The effectful program types protected
  * by the [[CircuitBreaker]]s created and maintained with this registry are fixed by an `F` where an
  * instance of `Effect[F]` is provided in implicit scope.
  */
 final class CircuitBreakerRegistry[F[_]] private (
-    state: StateRef[F, State[F]],
-    eventTopic: Topic[F, Option[CircuitBreakerEvent]],
-    shutdownTrigger: ShutdownTrigger[F]
-)(implicit ec: ExecutionContext, F: Concurrent[F], T: Timer[F]) {
+  state: StateRef[F, State[F]],
+  eventTopic: Topic[F, Option[CircuitBreakerEvent]],
+  shutdownTrigger: ShutdownTrigger[F])(implicit F: Concurrent[F], T: Timer[F]) {
 
   /**
-   * Creates an `fs2.Stream` of [[CircuitBreaker#CircuitBreakerEvent]]s by subscribing to the event `fs2.async.mutable.Topic` maintained
+   * Creates an `Stream` of [[CircuitBreaker#CircuitBreakerEvent]]s by subscribing to the event `Topic` maintained
    * by the registry.
    * @param maxQueued - the maximum number of events to queue pending consumption before dropping the oldest.
-   * @return streamOfEvents - an `fs2.Stream[F, CircuitBreakerEvent]` constituting the stream of state change events.
+   * @return streamOfEvents - an `Stream[F, CircuitBreakerEvent]` constituting the stream of state change events.
    */
   def events(maxQueued: Int): Stream[F, CircuitBreakerEvent] =
     eventTopic.subscribe(maxQueued).collect { case Some(event) => event }.interruptWhen(shutdownTrigger.signal)
 
   /**
-   * Creates a `fs2.Stream` of [[statistics.Statistics]] for all [[CircuitBreaker]]s which are emitted at the interval provided.
+   * Creates a `Stream` of [[statistics.Statistics]] for all [[CircuitBreaker]]s which are emitted at the interval provided.
    * @param retrievalInterval - the interval at which statistics are retrieved from registered [[CircuitBreaker]]s and emitted
    *   to the stats stream.
-   * @return streamOfStatistics - an `fs2.Stream[F, Statistics]` constituting the stream of statistics.
+   * @return streamOfStatistics - an `Stream[F, Statistics]` constituting the stream of statistics.
    */
   def statistics(retrievalInterval: FiniteDuration): Stream[F, Statistics] = {
     def retrieveStatistics: F[Vector[Statistics]] = for {
@@ -98,12 +96,10 @@ final class CircuitBreakerRegistry[F[_]] private (
   def forFailure(
     id: Identifier,
     config: FailureSettings,
-    evaluator: FailureEvaluator = FailureEvaluator.default
-  ): F[CircuitBreaker[F]] = State.circuitBreaker(
+    evaluator: FailureEvaluator = FailureEvaluator.default): F[CircuitBreaker[F]] = State.circuitBreaker(
     id,
     state,
-    CircuitBreaker.forFailure(id, config, evaluator, publishEvent)
-  )
+    CircuitBreaker.forFailure(id, config, evaluator, publishEvent))
 
   /**
    * Retrieves an existing [[CircuitBreaker]] instance which protects against both cascading failure and system overload
@@ -118,12 +114,10 @@ final class CircuitBreakerRegistry[F[_]] private (
   def forFlowControl(
     id: Identifier,
     config: FlowControlSettings,
-    evaluator: FailureEvaluator = FailureEvaluator.default
-  ): F[CircuitBreaker[F]] = State.circuitBreaker(
+    evaluator: FailureEvaluator = FailureEvaluator.default): F[CircuitBreaker[F]] = State.circuitBreaker(
     id,
     state,
-    CircuitBreaker.forFlowControl(id, config, evaluator, publishEvent)
-  )
+    CircuitBreaker.forFlowControl(id, config, evaluator, publishEvent))
 
   private def publishEvent(event: CircuitBreakerEvent) = eventTopic.publish1(Some(event))
 }
@@ -135,7 +129,7 @@ final class CircuitBreakerRegistry[F[_]] private (
  * internally by the registry.
  */
 object CircuitBreakerRegistry {
-  private class ShutdownTrigger[F[_]](val signal: Signal[F, Boolean]) {
+  private class ShutdownTrigger[F[_]](val signal: SignallingRef[F, Boolean]) {
     def execute: F[Unit] = signal.set(true)
   }
   private case class State[F[_]](circuitBreakers: Map[Identifier, CircuitBreaker[F]]) {
@@ -148,8 +142,7 @@ object CircuitBreakerRegistry {
     def circuitBreaker[F[_]: Sync](
       id: Identifier,
       ref: StateRef[F, State[F]],
-      creator: F[CircuitBreaker[F]]
-    ): F[CircuitBreaker[F]] = ref.getOrCreate[CircuitBreaker[F]](_.circuitBreakers.get(id), creator, _.addCircuitBreaker(_))
+      creator: F[CircuitBreaker[F]]): F[CircuitBreaker[F]] = ref.getOrCreate[CircuitBreaker[F]](_.circuitBreakers.get(id), creator, _.addCircuitBreaker(_))
   }
 
   /**
@@ -163,8 +156,8 @@ object CircuitBreakerRegistry {
    * @return circuitBreakerRegistry - an effectful program describing the creation of the circuit breaker registry which
    *   will be executed when the program is run.
    */
-  def create[F[_]](settings: RegistrySettings)(implicit F: Concurrent[F], T: Timer[F], ec: ExecutionContext): F[CircuitBreakerRegistry[F]] = {
-    def collectGarbageInBackground(state: StateRef[F, State[F]], shutdownSignal: Signal[F, Boolean]) = {
+  def create[F[_]](settings: RegistrySettings)(implicit F: Concurrent[F], T: Timer[F]): F[CircuitBreakerRegistry[F]] = {
+    def collectGarbageInBackground(state: StateRef[F, State[F]], shutdownSignal: SignallingRef[F, Boolean]) = {
       val collectGarbage = for {
         now <- F.delay(Instant.now)
         inactivityCutoff = now minusMillis settings.garbageCollection.inactivityCutoff.toMillis
@@ -175,14 +168,13 @@ object CircuitBreakerRegistry {
         _ <- state.modify(s => s.copy(circuitBreakers = s.circuitBreakers filterNot { case (id, _) => expiredIds.contains(id) }))
       } yield ()
       if (settings.garbageCollection.checkInterval > 0.nanoseconds) F.start(
-        Stream.awakeEvery[F](settings.garbageCollection.checkInterval).evalMap { _ => collectGarbage }.interruptWhen(shutdownSignal).compile.drain.map { _ => () }
-      ).map(_.join)
+        Stream.awakeEvery[F](settings.garbageCollection.checkInterval).evalMap { _ => collectGarbage }.interruptWhen(shutdownSignal).compile.drain.map { _ => () }).map(_.join)
       else F.pure(())
     }
     for {
-      eventTopic <- async.topic[F, Option[CircuitBreakerEvent]](None)
+      eventTopic <- Topic[F, Option[CircuitBreakerEvent]](None)
       state <- StateRef.create[F, State[F]](State.empty[F])
-      shutdownSignal <- async.signalOf[F, Boolean](false)
+      shutdownSignal <- SignallingRef[F, Boolean](false)
       _ <- collectGarbageInBackground(state, shutdownSignal)
     } yield new CircuitBreakerRegistry(state, eventTopic, new ShutdownTrigger(shutdownSignal))
   }

@@ -15,7 +15,7 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import cats.effect.{ Concurrent, IO }
+import cats.effect.{ Concurrent, ContextShift, IO, Timer }
 import cats.implicits._
 
 import scala.collection.immutable.Vector
@@ -31,6 +31,9 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
 
   private val GroupTasksBy = 10
 
+  implicit val contextShiftIO: ContextShift[IO] = IO.contextShift(global)
+  implicit val timerIO: Timer[IO] = IO.timer(global)
+
   val testRegistryConfig: RegistrySettings = RegistrySettings(RegistrySettings.GarbageCollection(5.minutes, 60.minutes))
 
   val testRequestSamples: Int = 200
@@ -38,16 +41,14 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
   val testTestingConfig: FailureSettings.Test = FailureSettings.Test(2.seconds, 10)
   val testFailureConfig: FailureSettings = FailureSettings(SampleWindow(50.milliseconds), testDegradationThreshold, testTestingConfig)
   val testFlowControlConfig: FlowControlSettings = FlowControlSettings(
-    testFailureConfig, SampleWindow(4.seconds), Percentage.minimum, Percentage.minimum, 0L, 500L
-  )
+    testFailureConfig, SampleWindow(4.seconds), Percentage.minimum, Percentage.minimum, 0L, 500L)
 
   class TestStreamedEventObserver {
     private case class State(
       openedEvents: Map[Identifier, Vector[OpenedEvent]] = Map.empty,
       closedEvents: Map[Identifier, Vector[ClosedEvent]] = Map.empty,
       throttledUpEvents: Map[Identifier, Vector[ThrottledUpEvent]] = Map.empty,
-      throttledDownEvents: Map[Identifier, Vector[ThrottledDownEvent]] = Map.empty
-    )
+      throttledDownEvents: Map[Identifier, Vector[ThrottledDownEvent]] = Map.empty)
     private val state = StateRef.create[IO, State](State()).unsafeRunSync
 
     def openedEvents(id: Identifier): Vector[OpenedEvent] =
@@ -77,8 +78,7 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
     } map { _ => () }
 
     private def addEventToMap[A](
-      id: Identifier, event: A, eventMap: Map[Identifier, Vector[A]]
-    ): Map[Identifier, Vector[A]] =
+      id: Identifier, event: A, eventMap: Map[Identifier, Vector[A]]): Map[Identifier, Vector[A]] =
       eventMap + (id -> (eventMap.getOrElse(id, Vector.empty) :+ event))
   }
 
@@ -99,8 +99,7 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
   class TestStreamedStatisticsObserver {
     private case class State(
       failureStatistics: Map[Identifier, Vector[FailureStatistics]] = Map.empty,
-      flowControlStatistics: Map[Identifier, Vector[FlowControlStatistics]] = Map.empty
-    )
+      flowControlStatistics: Map[Identifier, Vector[FlowControlStatistics]] = Map.empty)
     private val state = StateRef.create[IO, State](State()).unsafeRunSync
 
     def failureStatistics(id: Identifier): Vector[FailureStatistics] =
@@ -186,8 +185,7 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
     cb: CircuitBreaker[IO],
     initialRequestTime: FiniteDuration,
     requestTimeAdjustment: FiniteDuration,
-    pauseBetweenTaskGroups: FiniteDuration
-  ): Unit = {
+    pauseBetweenTaskGroups: FiniteDuration): Unit = {
     val groupedTasks = if (testRequestSamples < GroupTasksBy) testRequestSamples else GroupTasksBy
     case class ExecutionContext(tasks: Vector[IO[Unit]] = Vector.empty, currentRequestTime: FiniteDuration = initialRequestTime)
     val ec = (1 to testRequestSamples).toVector.foldLeft(ExecutionContext()) {

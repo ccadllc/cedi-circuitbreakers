@@ -95,8 +95,7 @@ case class SampleWindow(duration: FiniteDuration, maximumEntries: Int = Int.MaxV
 }
 object SampleWindow {
   implicit val configParser: ConfigParser[SampleWindow] = (
-    duration("duration") ~ int("maximum-entries").optional
-  ) map { case (dur, mes) => SampleWindow(dur, mes.getOrElse(dur.toSeconds.toInt + 1)) }
+    duration("duration") ~ int("maximum-entries").optional) map { case (dur, mes) => SampleWindow(dur, mes.getOrElse(dur.toSeconds.toInt + 1)) }
 }
 
 /**
@@ -138,11 +137,10 @@ object RegistrySettings {
  * @param enabled - The [[CircuitBreaker]] can be enabled or disabled with this parameter.
  */
 case class FailureSettings(
-    sampleWindow: SampleWindow,
-    degradationThreshold: Percentage,
-    test: FailureSettings.Test,
-    enabled: Boolean = true
-) {
+  sampleWindow: SampleWindow,
+  degradationThreshold: Percentage,
+  test: FailureSettings.Test,
+  enabled: Boolean = true) {
   def show: String = s"sample window [ ${sampleWindow.show} ], degradation threshold [ ${degradationThreshold.show} ], test [ ${test.show} ], enabled [ $enabled ]"
 }
 object FailureSettings {
@@ -156,8 +154,7 @@ object FailureSettings {
     subconfig("sample-window")(SampleWindow.configParser) ~
     subconfig("degradation-threshold")(Percentage.configParser) ~
     subconfig("test")(Test.configParser) ~
-    bool("enabled").withFallbackDefault(true)
-  ) map { case (sw, dt, t, e) => FailureSettings(sw, dt, t, e) }
+    bool("enabled").withFallbackDefault(true)) map { case (sw, dt, t, e) => FailureSettings(sw, dt, t, e) }
 }
 
 /**
@@ -183,14 +180,13 @@ object FailureSettings {
  * @param enabled - The flow control portion of the [[CircuitBreaker]] can be enabled or disabled with this parameter.
  */
 case class FlowControlSettings(
-    failure: FailureSettings,
-    sampleWindow: SampleWindow,
-    allowedOverProcessingRate: Percentage,
-    minimumReportableRateChange: Percentage,
-    perSecondRateMinimum: Long,
-    perSecondRateHardLimit: Long,
-    enabled: Boolean = true
-) {
+  failure: FailureSettings,
+  sampleWindow: SampleWindow,
+  allowedOverProcessingRate: Percentage,
+  minimumReportableRateChange: Percentage,
+  perSecondRateMinimum: Long,
+  perSecondRateHardLimit: Long,
+  enabled: Boolean = true) {
   def show: String = s"failure [ {failure.show} ], sample window [ ${sampleWindow.show} ], allowed over processing rate [ ${allowedOverProcessingRate.show} ], minimum reportable rate change [ ${minimumReportableRateChange.show} ], per second rate minimum [ $perSecondRateMinimum ], per second rate hard limit [ $perSecondRateHardLimit ], enabled [ $enabled ]"
 }
 object FlowControlSettings {
@@ -201,6 +197,5 @@ object FlowControlSettings {
     subconfig("minimum-reportable-rate-change")(Percentage.configParser) ~
     long("per-second-rate-minimum").withFallbackDefault(1L) ~
     long("per-second-rate-hard-limit") ~
-    bool("enabled").withFallbackDefault(true)
-  ) map { case (f, sw, aopr, mrrc, psrm, psrhl, e) => FlowControlSettings(f, sw, aopr, mrrc, psrm, psrhl, e) }
+    bool("enabled").withFallbackDefault(true)) map { case (f, sw, aopr, mrrc, psrm, psrhl, e) => FlowControlSettings(f, sw, aopr, mrrc, psrm, psrhl, e) }
 }

@@ -15,8 +15,6 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import scala.concurrent.ExecutionContext.Implicits.global
-
 import cats.effect.IO
 
 import org.scalatest.OptionValues._

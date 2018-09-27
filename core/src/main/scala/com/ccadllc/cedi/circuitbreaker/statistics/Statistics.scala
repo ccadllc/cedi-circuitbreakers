@@ -51,13 +51,12 @@ sealed abstract class Statistics extends Product with Serializable {
  * @param lastActivity - the timestamp of the last state change for these statistics.
  */
 case class FailureStatistics private (
-    id: CircuitBreaker.Identifier,
-    config: FailureSettings,
-    metrics: FailureStatistics.SlidingAggregateMetrics,
-    testing: Option[FailureStatistics.Testing],
-    change: Option[FailureStatistics.Change],
-    lastActivity: Instant
-) extends Statistics {
+  id: CircuitBreaker.Identifier,
+  config: FailureSettings,
+  metrics: FailureStatistics.SlidingAggregateMetrics,
+  testing: Option[FailureStatistics.Testing],
+  change: Option[FailureStatistics.Change],
+  lastActivity: Instant) extends Statistics {
 
   import FailureStatistics._
 
@@ -96,8 +95,7 @@ case class FailureStatistics private (
         metrics = effectiveMetrics,
         testing = Some(Testing(config.test)),
         change = Some(Change.Opened),
-        lastActivity = timestamp
-      )
+        lastActivity = timestamp)
       else copy(metrics = effectiveMetrics, testing = None, change = None, lastActivity = timestamp)
   }
   /**
@@ -265,11 +263,10 @@ object FailureStatistics {
  *   be present here.
  */
 case class FlowControlStatistics private (
-    id: CircuitBreaker.Identifier,
-    metrics: FlowControlStatistics.Metrics,
-    failure: FailureStatistics,
-    change: Option[FlowControlStatistics.Change]
-) extends Statistics {
+  id: CircuitBreaker.Identifier,
+  metrics: FlowControlStatistics.Metrics,
+  failure: FailureStatistics,
+  change: Option[FlowControlStatistics.Change]) extends Statistics {
 
   import FlowControlStatistics._
 
@@ -381,8 +378,7 @@ case class FlowControlStatistics private (
   } yield change
 
   private def indicatesShouldBeThrottled(m: Metrics) = (
-    m.meanInboundRate.perSecond >= m.config.perSecondRateMinimum && m.maxAcceptableRate.exists { m.meanInboundRate.perSecond > _.perSecond }
-  ) || (m.config.perSecondRateHardLimit > 0L && m.inboundRate.currentSample.perSecondCount > m.config.perSecondRateHardLimit)
+    m.meanInboundRate.perSecond >= m.config.perSecondRateMinimum && m.maxAcceptableRate.exists { m.meanInboundRate.perSecond > _.perSecond }) || (m.config.perSecondRateHardLimit > 0L && m.inboundRate.currentSample.perSecondCount > m.config.perSecondRateHardLimit)
 }
 
 /**
@@ -635,6 +631,5 @@ object FlowControlStatistics {
     id,
     Metrics(config, AggregateFlowRate.initial(config.sampleWindow), AggregateFlowRate.initial(config.sampleWindow)),
     FailureStatistics.initial(id, config.failure),
-    None
-  )
+    None)
 }

@@ -82,7 +82,7 @@ sealed abstract class CircuitBreaker[F[_]](val id: Identifier)(implicit F: Sync[
    */
   def lastActivity: F[Instant]
 
-  private[circuitbreaker]type StatisticsVariant
+  private[circuitbreaker] type StatisticsVariant
 
   private[circuitbreaker] final def now: F[Instant] = F.delay(Instant.now)
 
@@ -105,8 +105,7 @@ object CircuitBreaker {
    */
   sealed abstract class CircuitBreakerException(
     val id: Identifier,
-    val message: String
-  ) extends RuntimeException(s"Circuit Breaker ${id.show} $message") with Product with Serializable
+    val message: String) extends RuntimeException(s"Circuit Breaker ${id.show} $message") with Product with Serializable
 
   /**
    * This data type represents the error returned when the `CircuitBreaker` is failing a request because the configured percentage
@@ -217,12 +216,11 @@ object CircuitBreaker {
    * an instance which protects against cascading failures.
    */
   private[circuitbreaker] class FailureCircuitBreaker[F[_]](
-      id: Identifier,
-      config: FailureSettings,
-      evaluator: FailureEvaluator,
-      publishEvent: CircuitBreakerEvent => F[Unit],
-      statistics: StateRef[F, FailureStatistics]
-  )(implicit F: Sync[F]) extends CircuitBreaker[F](id) {
+    id: Identifier,
+    config: FailureSettings,
+    evaluator: FailureEvaluator,
+    publishEvent: CircuitBreakerEvent => F[Unit],
+    statistics: StateRef[F, FailureStatistics])(implicit F: Sync[F]) extends CircuitBreaker[F](id) {
     type StatisticsVariant = FailureStatistics
 
     def currentStatistics: F[Statistics] = statistics.get map { s => s: Statistics }
@@ -273,8 +271,7 @@ object CircuitBreaker {
     id: Identifier,
     config: FailureSettings,
     evaluator: FailureEvaluator,
-    publishEvent: CircuitBreakerEvent => F[Unit]
-  )(implicit F: Sync[F]): F[CircuitBreaker[F]] =
+    publishEvent: CircuitBreakerEvent => F[Unit])(implicit F: Sync[F]): F[CircuitBreaker[F]] =
     StateRef.create[F, FailureStatistics](FailureStatistics.initial(id, config)) map { new FailureCircuitBreaker(id, config, evaluator, publishEvent, _) }
 
   /*
@@ -282,13 +279,12 @@ object CircuitBreaker {
    * an instance which both protects against cascading failures as well as throttling to protect against service overload.
    */
   private[circuitbreaker] class FlowControlCircuitBreaker[F[_]](
-      id: Identifier,
-      config: FlowControlSettings,
-      evaluator: FailureEvaluator,
-      publishEvent: CircuitBreakerEvent => F[Unit],
-      statistics: StateRef[F, FlowControlStatistics],
-      failureCircuitBreaker: FailureCircuitBreaker[F]
-  )(implicit F: Sync[F]) extends CircuitBreaker[F](id) {
+    id: Identifier,
+    config: FlowControlSettings,
+    evaluator: FailureEvaluator,
+    publishEvent: CircuitBreakerEvent => F[Unit],
+    statistics: StateRef[F, FlowControlStatistics],
+    failureCircuitBreaker: FailureCircuitBreaker[F])(implicit F: Sync[F]) extends CircuitBreaker[F](id) {
 
     type StatisticsVariant = FlowControlStatistics
 
@@ -353,8 +349,7 @@ object CircuitBreaker {
     id: Identifier,
     config: FlowControlSettings,
     evaluator: FailureEvaluator,
-    publishEvent: CircuitBreakerEvent => F[Unit]
-  )(implicit F: Sync[F]): F[CircuitBreaker[F]] = for {
+    publishEvent: CircuitBreakerEvent => F[Unit])(implicit F: Sync[F]): F[CircuitBreaker[F]] = for {
     flowControlStats <- StateRef.create[F, FlowControlStatistics](FlowControlStatistics.initial(id, config))
     failureStats <- StateRef.create[F, FailureStatistics](FailureStatistics.initial(id, config.failure))
     failureCB = new FailureCircuitBreaker(id, config.failure, evaluator, publishEvent, failureStats)

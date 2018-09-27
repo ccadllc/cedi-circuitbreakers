@@ -15,8 +15,6 @@
  */
 package com.ccadllc.cedi.circuitbreaker
 
-import scala.concurrent.ExecutionContext.Implicits.global
-
 import cats.effect.IO
 
 import org.scalatest.WordSpec
@@ -42,8 +40,7 @@ class FailureCircuitBreakerTest extends WordSpec with TestSupport {
       val failureThreshold = Percentage(20.0)
       val cb = registry.forFailure(
         id,
-        testFailureConfig.copy(degradationThreshold = failureThreshold, test = testFailureConfig.test.copy(interval = 0.seconds))
-      ).unsafeRunSync
+        testFailureConfig.copy(degradationThreshold = failureThreshold, test = testFailureConfig.test.copy(interval = 0.seconds))).unsafeRunSync
       val tseo = TestStreamedEventObserver.create(registry)
       tseo.closedCount(id) shouldBe 0
       protectFailure(cb, failureThreshold.plus(Percentage(10.0)))

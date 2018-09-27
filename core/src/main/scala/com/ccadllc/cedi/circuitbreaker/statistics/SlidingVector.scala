@@ -35,10 +35,9 @@ import java.time.Instant
  *   item `A`, such as `Boolean` or `Long`, for example).
  */
 case class SlidingVector[A](
-    window: SampleWindow,
-    fullWindowCollected: Boolean = false,
-    entries: Vector[SlidingVector.TimeStamped[A]] = Vector.empty
-) {
+  window: SampleWindow,
+  fullWindowCollected: Boolean = false,
+  entries: Vector[SlidingVector.TimeStamped[A]] = Vector.empty) {
   /**
    * Resets the vector of items to zero, returning a new copy.
    * @return newSlidingVector - a new copy of the vector.
@@ -55,8 +54,7 @@ case class SlidingVector[A](
   def add(timestamp: Instant, value: A): SlidingVector[A] = {
     val earliest = timestamp.minusMillis(window.duration.toMillis)
     val updated = (
-      entries.span(_.time.isBefore(earliest))._2 :+ SlidingVector.TimeStamped(timestamp, value)
-    ).takeRight(window.maximumEntries)
+      entries.span(_.time.isBefore(earliest))._2 :+ SlidingVector.TimeStamped(timestamp, value)).takeRight(window.maximumEntries)
     def sizeHasNotIncreased = updated.size <= entries.size
     copy(fullWindowCollected = fullWindowCollected || sizeHasNotIncreased, entries = updated)
   }
