@@ -103,11 +103,11 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
       val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig.copy(garbageCollection = gcSettings)).unsafeRunSync
       registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync should not be 'empty
-      Thread.sleep(inactivityCutoff.toMillis + (gcCheckInterval.toMillis * 2L))
+      Thread.sleep(inactivityCutoff.toMillis + (gcCheckInterval.toMillis * 4L))
       registry.circuitBreakers.unsafeRunSync shouldBe 'empty
       registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync should not be 'empty
-      Thread.sleep(inactivityCutoff.toMillis + (gcCheckInterval.toMillis * 2L))
+      Thread.sleep(inactivityCutoff.toMillis + (gcCheckInterval.toMillis * 4L))
       registry.circuitBreakers.unsafeRunSync shouldBe 'empty
     }
   }
