@@ -18,11 +18,11 @@ package com.ccadllc.cedi.circuitbreaker
 import cats.effect.IO
 
 import org.scalatest.OptionValues._
-import org.scalatest.WordSpec
+import org.scalatest.wordspec.AnyWordSpec
 
 import scala.concurrent.duration._
 
-class FlowControlCircuitBreakerTest extends WordSpec with TestSupport {
+class FlowControlCircuitBreakerTest extends AnyWordSpec with TestSupport {
   "The flow control circuitbreaker" should {
     "throttle down the request rate when the inbound rate continue to exceed the max acceptable rate" in {
       val id = CircuitBreaker.Identifier("test")

@@ -20,8 +20,6 @@ import cats.implicits._
 
 import java.time.Instant
 
-import scala.language.higherKinds
-
 import statistics._
 
 import CircuitBreaker._

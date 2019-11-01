@@ -6,7 +6,7 @@ Quick links:
 - [Examples of use](#usage)
 - [Configuration](#config)
 - [How to get latest version](#getit)
-- [API Docs](https://oss.sonatype.org/service/local/repositories/releases/archive/com/ccadllc/cedi/circuitbreaker_2.12/1.2.0/circuitbreaker_2.12-1.2.0-javadoc.jar/!/com/ccadllc/cedi/circuitbreaker/index.html)
+- [API Docs](https://oss.sonatype.org/service/local/repositories/releases/archive/com/ccadllc/cedi/circuitbreaker_2.12/2.0.0/circuitbreaker_2.12-2.0.0-javadoc.jar/!/com/ccadllc/cedi/circuitbreaker/index.html)
 
 ### <a id="about"></a>About the library
 
@@ -351,10 +351,10 @@ flow-control-circuitbreaker {
 
 ### <a id="getit"></a>How to get latest Version
 
-Cedi Circuitbreaker supports 2.11 and 2.12. It is published on Maven Central.
+Cedi Circuitbreaker supports 2.11, 2.12, and 2.13. It is published on Maven Central.
 
 ```scala
-libraryDependencies += "com.ccadllc.cedi" %% "circuitbreaker" % "1.2.0"
+libraryDependencies += "com.ccadllc.cedi" %% "circuitbreaker" % "2.0.0"
 ```
 
 ## Copyright and License

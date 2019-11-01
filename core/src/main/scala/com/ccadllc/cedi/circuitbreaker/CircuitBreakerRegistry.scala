@@ -22,7 +22,6 @@ import fs2.concurrent.{ SignallingRef, Topic }
 import java.time.Instant
 
 import scala.concurrent.duration._
-import scala.language.higherKinds
 import CircuitBreaker._
 import CircuitBreakerRegistry._
 import statistics.Statistics

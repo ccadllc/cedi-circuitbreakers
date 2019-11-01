@@ -3,6 +3,8 @@
 .idea
 .project
 .settings
+.metals
+.bloop
 tags
 target
 .DS_Store

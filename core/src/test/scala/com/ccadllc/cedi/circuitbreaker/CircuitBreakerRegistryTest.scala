@@ -17,11 +17,11 @@ package com.ccadllc.cedi.circuitbreaker
 
 import cats.effect.IO
 
-import org.scalatest.WordSpec
+import org.scalatest.wordspec.AnyWordSpec
 
 import scala.concurrent.duration._
 
-class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
+class CircuitBreakerRegistryTest extends AnyWordSpec with TestSupport {
   "The circuit breaker registry" should {
     "register a new failure circuit breaker when an existing one with the given identifier does not exist" in {
       val id = CircuitBreaker.Identifier("test")

@@ -15,8 +15,6 @@
  */
 package com.ccadllc.cedi
 
-import scala.language.higherKinds
-
 /**
  * The circuitbreaker library provides protection against cascading failure and
  * system overload via the [[CircuitBreaker]] and its primary function [[CircuitBreaker#protect]].

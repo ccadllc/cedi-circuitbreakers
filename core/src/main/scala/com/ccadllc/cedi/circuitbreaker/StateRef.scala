@@ -20,8 +20,6 @@ import cats.implicits._
 
 import java.util.concurrent.atomic.AtomicReference
 
-import scala.language.higherKinds
-
 /*
  * Provides lock-free atomic retrieval and update capabilities for an unconstrained immutable
  * data type.  Used by this library to maintain state in the [[CircuitBreaker]] instances and the [[CircuitBreakerRegistry]].
