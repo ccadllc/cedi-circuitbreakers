@@ -12,7 +12,7 @@ lazy val core = project.in(file("core")).enablePlugins(SbtOsgi).
   settings(
     name := "circuitbreaker",
     libraryDependencies ++= Seq(
-      "com.ccadllc.cedi" %% "config" % "1.1.0",
+      "com.ccadllc.cedi" %% "config" % "1.2.0",
       "co.fs2" %% "fs2-core" % "1.0.2",
       "org.scalatest" %% "scalatest" % "3.0.5" % "test"
     ),
