@@ -22,11 +22,13 @@ import scala.collection.immutable.Vector
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 import scala.util.Random
-import org.scalatest.{ BeforeAndAfterAll, Matchers, Suite, WordSpecLike }
+import org.scalatest.{ BeforeAndAfterAll, Suite }
 import CircuitBreaker._
 import statistics._
+import org.scalatest.matchers.should.Matchers
+import org.scalatest.wordspec.AnyWordSpecLike
 
-trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
+trait TestSupport extends AnyWordSpecLike with Matchers with BeforeAndAfterAll {
   self: Suite =>
 
   private val GroupTasksBy = 10
@@ -163,7 +165,7 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
     Random.shuffle(successfulTasks ++ failedTasks).grouped(groupedTasks).toVector.traverse[IO, Vector[Option[Throwable]]] {
       def protectInParallel(taskGroup: Vector[IO[Unit]]) = {
         def attemptProtect(t: IO[Unit]): IO[Option[Throwable]] = cb.protect(t).attempt map { _.left.toOption }
-        taskGroup.map(attemptProtect).parTraverse[IO, IO.Par, Option[Throwable]](identity)
+        taskGroup.map(attemptProtect).parTraverse[IO, Option[Throwable]](identity)
       }
       protectInParallel(_) map { r =>
         Thread.sleep(50L)
@@ -201,7 +203,7 @@ trait TestSupport extends WordSpecLike with Matchers with BeforeAndAfterAll {
     ec.tasks.grouped(groupedTasks).toVector.traverse[IO, Vector[IO[Either[Throwable, Unit]]]] {
       def protectInParallel(taskGroup: Vector[IO[Unit]]) = {
         def attemptProtect(t: IO[Unit]): IO[IO[Either[Throwable, Unit]]] = Concurrent[IO].start(cb.protect(t).attempt).map(_.join)
-        taskGroup.map(attemptProtect).parTraverse[IO, IO.Par, IO[Either[Throwable, Unit]]](identity)
+        taskGroup.map(attemptProtect).parTraverse[IO, IO[Either[Throwable, Unit]]](identity)
       }
       protectInParallel(_) map { r =>
         Thread.sleep(pauseBetweenTaskGroups.toMillis)

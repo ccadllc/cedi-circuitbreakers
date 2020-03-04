@@ -17,16 +17,15 @@ package com.ccadllc.cedi.circuitbreaker
 
 import cats.effect.IO
 
-import org.scalatest.WordSpec
-
 import scala.concurrent.duration._
+import org.scalatest.wordspec.AnyWordSpec
 
-class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
+class CircuitBreakerRegistryTest extends AnyWordSpec with TestSupport {
   "The circuit breaker registry" should {
     "register a new failure circuit breaker when an existing one with the given identifier does not exist" in {
       val id = CircuitBreaker.Identifier("test")
       val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync shouldBe Symbol("empty")
       val cb = registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
     }
@@ -44,12 +43,12 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
       val cb = registry.forFailure(id, testFailureConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
       registry.removeCircuitBreaker(id).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Symbol("empty")
     }
     "register a new flow control circuit breaker when an existing one with the given identifier does not exist" in {
       val id = CircuitBreaker.Identifier("test")
       val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync shouldBe Symbol("empty")
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
     }
@@ -67,14 +66,14 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
       val cb = registry.forFlowControl(id, testFlowControlConfig).unsafeRunSync
       registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Some(cb)
       registry.removeCircuitBreaker(id).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Symbol("empty")
     }
     "ignore removal of a non-existent circuit breaker" in {
       val id = CircuitBreaker.Identifier("test")
       val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Symbol("empty")
       registry.removeCircuitBreaker(id).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync.get(id) shouldBe Symbol("empty")
     }
     "request a stream of events (when events are available)" in {
       val id = CircuitBreaker.Identifier("test")
@@ -102,13 +101,13 @@ class CircuitBreakerRegistryTest extends WordSpec with TestSupport {
       val gcSettings = RegistrySettings.GarbageCollection(gcCheckInterval, inactivityCutoff)
       val registry = CircuitBreakerRegistry.create[IO](testRegistryConfig.copy(garbageCollection = gcSettings)).unsafeRunSync
       registry.forFailure(id, testFailureConfig).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync should not be 'empty
+      registry.circuitBreakers.unsafeRunSync should not be Symbol("empty")
       Thread.sleep(inactivityCutoff.toMillis + (gcCheckInterval.toMillis * 4L))
-      registry.circuitBreakers.unsafeRunSync shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync shouldBe Symbol("empty")
       registry.forFailure(id, testFailureConfig).unsafeRunSync
-      registry.circuitBreakers.unsafeRunSync should not be 'empty
+      registry.circuitBreakers.unsafeRunSync should not be Symbol("empty")
       Thread.sleep(inactivityCutoff.toMillis + (gcCheckInterval.toMillis * 4L))
-      registry.circuitBreakers.unsafeRunSync shouldBe 'empty
+      registry.circuitBreakers.unsafeRunSync shouldBe Symbol("empty")
     }
   }
 }

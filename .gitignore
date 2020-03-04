@@ -19,3 +19,5 @@ target
 *~
 .metals
 project/.bloop
+project/metals.sbt
+.bloop
