@@ -17,11 +17,10 @@ package com.ccadllc.cedi.circuitbreaker
 
 import cats.effect.IO
 
-import org.scalatest.WordSpec
-
 import scala.concurrent.duration._
+import org.scalatest.wordspec.AnyWordSpec
 
-class FailureCircuitBreakerTest extends WordSpec with TestSupport {
+class FailureCircuitBreakerTest extends AnyWordSpec with TestSupport {
   "The failure circuit breaker" should {
     "switch to the open position when the failure rate of the services it is protecting exceeds the configured threshold" in {
       val id = CircuitBreaker.Identifier("test")
